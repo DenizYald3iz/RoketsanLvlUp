@@ -1,7 +1,7 @@
 from s2agent.data import get_data
-from s2agent.geo import hhmm_to_min
+from s2agent.geo import hhmm_to_min, pixel_to_latlon
 from s2agent.registry import run_tool
-from s2agent.tools.reports import parse_location
+from s2agent.tools.reports import parse_claim, parse_location
 
 D = get_data()
 
@@ -45,3 +45,49 @@ def test_every_coordinate_report_lands_on_exactly_one_image():
     coord_ids = [r["report_id"] for r in D.reports if parse_location(r["text"], D.zones)
                  and parse_location(r["text"], D.zones)["loc_type"] == "coord"]
     assert set(seen) == set(coord_ids) and set(seen.values()) == {1}
+
+
+def compare(image_id: str, report_id: str, evidence: dict | None = None) -> dict:
+    return run_tool("compare_report", {"report_id": report_id}, stage="REPORTS", image_id=image_id,
+                    evidence=evidence or {}).result
+
+
+def test_parse_claim_templates():
+    c = parse_claim("39.9307N 32.8380E yakininda 5 kamyonun durdugu bildirildi.")
+    assert (c["type"], c["count"], c["motion"]) == ("truck", 5, "stopped")
+    c = parse_claim("39.9017N 32.8702E civarinda 3 araclik bir kamyon konvoyu ilerliyor.")
+    assert (c["type"], c["count"], c["motion"]) == ("truck", 3, "moving")
+    c = parse_claim("39.92083N 32.89617E konumundan usse dogru ilerleyen otomobil planli ikmal aracidir, "
+                    "kimlik teyidi yapilmistir.")
+    assert (c["type"], c["motion"], c["friendly"]) == ("car", "approaching", True)
+    c = parse_claim("39.9094N 32.8281E cevresinde trafik olagandan yogun; bu bolgede genellikle 4 arac civari gorulur.")
+    assert (c["min_count"], c["count"]) == (5, None)
+    assert parse_claim("39.8732N 32.8522E civarinda 1 agir arac (kamyon/otobus) gozlendi.")["type"] == "heavy"
+    assert parse_claim("39.92087N 32.89536E konumundaki kamyon bir saatten uzun suredir yerinden ayrilmadi.")[
+        "motion"] == "stopped_long"
+    assert parse_claim("Dun gece Dogu Yolu cevresinde arac hareketliligi oldugu yonunde dogrulanmamis bir ihbar var.")[
+        "scope"] == "stale"
+
+
+def test_compare_verdicts():
+    assert compare("img_000267", "R052")["verdict"] == "consistent"  # parked truck, T0045 speed 0
+    assert compare("img_000267", "R082")["verdict"] == "consistent"  # car closing on base (T0226)
+    r = compare("img_001147", "R054")  # "truck stopped" but T0078 moves 3.9 m/s
+    assert r["verdict"] == "contradicts" and "T0078" in r["related"]
+    assert [c["ok"] for c in r["checks"] if c["aspect"] == "motion"] == [False]
+    assert compare("img_000733", "R112")["verdict"] == "contradicts"  # "coming to base" but not closing
+    assert compare("img_002256", "R025")["verdict"] == "contradicts"  # 2 trucks claimed, none detected
+    assert compare("img_003464", "R100")["verdict"] == "consistent"  # 7 claimed, 6 detected (tolerance 1)
+    assert compare("img_008333", "R091")["verdict"] == "contradicts"  # "no heavy movement" vs moving truck
+    assert compare("img_000267", "R012")["verdict"] == "irrelevant"  # last night's unverified tip
+    assert compare("img_006388", "R001")["verdict"] == "unverifiable"  # "traffic normal"
+
+
+def test_compare_edge_cases():
+    assert "error" in compare("img_003839", "R999")
+    assert compare("img_003839", "R100")["verdict"] == "irrelevant"  # ~1.1 km outside this frame
+    # LOCATE's det_id is reused when a detection sits at the same spot
+    b = D.boxes[(D.boxes.image_id == "img_000267") & (D.boxes.label == "truck")].sort_values("conf").iloc[-1]
+    lat, lon = pixel_to_latlon(b.cx, b.cy, D.meta["img_000267"])
+    ev = {"detections": {"detections": [{"det_id": "D7", "label": "truck", "conf": 0.78, "lat": lat, "lon": lon}]}}
+    assert "D7" in compare("img_000267", "R052", ev)["related"]
