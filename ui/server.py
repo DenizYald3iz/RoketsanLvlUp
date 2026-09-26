@@ -1,17 +1,16 @@
 """Komuta merkezi UI. Çalıştır: python -m ui.server  →  http://127.0.0.1:8000"""
-import json
 import os
 import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from s2agent.config import ROOT
 from s2agent.data import get_data
 
-from . import pipeline
+from . import live_agent, pipeline
 
 WEB = Path(__file__).parent / "web"
 UPLOADS = ROOT / "outputs" / "uploads"
@@ -39,13 +38,19 @@ def get_image_file(image_id: str):
 
 @app.get("/api/agent/{image_id}")
 def get_agent_output(image_id: str):
-    """GLM agent output (scripts.run → outputs/<id>.json), trimmed for the UI."""
-    f = ROOT / "outputs" / f"{image_id}.json"
-    if not f.exists():
+    """Saved GLM agent output (outputs/<id>.json), trimmed for the UI."""
+    out = live_agent.load(image_id)
+    if out is None:
         raise HTTPException(404, f"agent çıktısı yok: {image_id}")
-    ev = json.loads(f.read_text()).get("evidence", {})
-    return {"image_id": image_id, "assessment": ev.get("assessment"), "matches": ev.get("matches"),
-            "kinematics": ev.get("kinematics", {}), "report_checks": ev.get("report_checks", {})}
+    return out
+
+
+@app.post("/api/agent/{image_id}/run")
+def run_agent(image_id: str):
+    """Run the real GLM agent now; streams NDJSON trace events, ends with {type: done, agent}."""
+    if image_id not in get_data().meta:
+        raise HTTPException(404, image_id)
+    return StreamingResponse(live_agent.stream(image_id), media_type="application/x-ndjson")
 
 
 @app.post("/api/analyze")

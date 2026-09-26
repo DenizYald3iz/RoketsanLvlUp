@@ -110,7 +110,7 @@ details ul { margin: 4px 0 0; padding-left: 14px; font-size: 10px; color: var(--
   background: rgba(3,7,12,.7); border: 1px solid var(--line); padding: 6px 10px; }
 .hud.tl { top: 10px; left: 10px; } .hud.tr { top: 10px; right: 10px; padding: 3px; } .hud.bl { bottom: 10px; left: 10px; }
 .legend { display: flex; gap: 12px; } .legend span { color: var(--c); } .legend span::before { content: '● '; }
-.log { position: absolute; z-index: 5; right: 10px; bottom: 10px; width: min(560px, 60%); max-height: 34%; overflow: auto;
+.log { position: absolute; z-index: 5; right: 10px; bottom: 10px; width: min(560px, 60%); max-height: 42%; overflow: auto;
   background: rgba(3,7,12,.82); border: 1px solid var(--line); padding: 8px 10px; font-size: 10.5px; }
 .ln { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: type .35s steps(20); }
 @keyframes type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
@@ -152,3 +152,19 @@ details ul { margin: 4px 0 0; padding-left: 14px; font-size: 10px; color: var(--
 
 .maplibregl-ctrl-attrib { display: none; }
 ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: var(--line2); }
+
+/* ---------- GLM brain HUD ---------- */
+.brain { position: absolute; z-index: 6; top: 10px; left: 50%; transform: translate(-50%, -80px); transition: transform .4s;
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: rgba(3,7,12,.88); border: 1px solid var(--amber);
+  box-shadow: 0 0 20px rgba(255,176,32,.25); font: 600 9px var(--disp); letter-spacing: .12em; white-space: nowrap; }
+.brain.on { transform: translate(-50%, 0); }
+.brain .bt { color: var(--amber); margin-right: 6px; }
+.brain i { color: var(--dim); font-style: normal; }
+.brain .st { padding: 3px 7px; border: 1px solid var(--line); color: var(--dim); }
+.brain .st.active { color: var(--amber); border-color: var(--amber); animation: blink .8s steps(2) infinite; }
+.brain .st.done { color: var(--green); border-color: var(--green); animation: none; }
+.brain .st.done.fallback, .brain .st.done.forced { color: var(--amber); border-color: var(--amber); }
+.brain .bs { margin-left: 8px; color: var(--txt); font: 10px var(--mono); letter-spacing: 0; }
+.hud.tl { top: 58px; }
+.ln.glm { color: var(--amber); } .ln.glm b { color: #ffd580; } .ln.dim { opacity: .7; } .ln.tool { color: var(--dim); }
+.ln .stg { color: var(--cyan); opacity: .7; }

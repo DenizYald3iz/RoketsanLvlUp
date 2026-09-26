@@ -35,6 +35,13 @@
           <select id="sample"></select>
           <button id="demo">▶ DEMO</button>
         </div>
+        <div class="row">
+          <select id="glm-mode">
+            <option value="live">GLM: CANLI ÇALIŞTIR (~2 dk, ~$0.002)</option>
+            <option value="cached">GLM: KAYITLI ÇIKTI (varsa), yoksa canlı</option>
+            <option value="off">GLM: KAPALI</option>
+          </select>
+        </div>
         <div id="meta-row" class="row meta">
           <input id="meta-id" placeholder="image_id (dosya adı farklıysa)" />
         </div>
@@ -50,6 +57,7 @@
 
     <section class="center">
       <div id="map"></div>
+      <div id="brain" class="brain"></div>
       <div class="hud tl">MERKEZ ÜS · 39.92184N 32.85306E</div>
       <div class="hud tr"><select id="basemap"><option value="sat">UYDU</option><option value="dark">KARANLIK</option></select></div>
       <div class="hud bl legend">

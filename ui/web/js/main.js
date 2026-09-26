@@ -6,6 +6,7 @@ import { createMap } from './map.js';
 import { createImageView } from './imageView.js';
 import * as ui from './panels.js';
 import { LEVELS, levelsByDet, loadAgent, maxLevel, renderAlerts } from './agent.js';
+import { createBrain } from './brain.js';
 
 const $ = (s) => document.querySelector(s);
 const state = { zones: {}, done: new Set(), vehicles: 0, alerts: 0, busy: false, queue: [] };
@@ -14,6 +15,7 @@ const layout = await api.getLayout();
 const images = await api.getImages();
 const map = createMap($('#map'), layout);
 const iv = createImageView($('#imgview'));
+const brain = createBrain($('#brain'));
 
 ui.renderZoneBoard(layout);
 ui.startClock();
@@ -35,6 +37,7 @@ $('#basemap').onchange = (e) => map.setBasemap(e.target.value);
 $('#demo').onclick = async () => {
   const withAgent = [];
   for (const i of images) if (!state.done.has(i.image_id) && (await loadAgent(i.image_id))) withAgent.push(i.image_id);
+  $('#glm-mode').value = 'cached';
   ui.log(`DEMO · GLM çıktısı olan ${withAgent.length} çerçeve sıraya alındı`, 'warn');
   withAgent.forEach(enqueueSample);
 };
@@ -75,7 +78,6 @@ async function run(file, imageId) {
     throw e;
   }
   $('#meta-row').classList.remove('need');
-  const agentP = loadAgent(res.image_id);
   const fresh = !state.done.has(res.image_id);
   res.detections.forEach((d) => (d.key = `${res.image_id}/${d.det_id}`));
 
@@ -85,6 +87,7 @@ async function run(file, imageId) {
   ui.log(`◉ ${res.image_id} · ${res.capture_time} · ${prettyZone(res.zone)} · üsse ${res.base_dist_m} m · ${res.detections.length} araç`, 'ok');
   ui.renderDetections(res, (key, on) => { map.highlight(key, on); iv.highlight(on ? key : null); });
 
+  // 1) boxes → coordinates → drops on the frame
   await map.focusFrame(res, url);
   for (const d of res.detections) {
     iv.addBox(d);
@@ -93,8 +96,51 @@ async function run(file, imageId) {
   }
   map.link(res);
 
-  // GLM verdict drives threat levels
-  const agent = await agentP;
+  // 2) zoom out, count vehicles into zones one by one
+  await sleep(600);
+  await map.overview();
+  if (fresh) {
+    state.done.add(res.image_id);
+    for (const d of res.detections) {
+      const z = (state.zones[d.zone] ||= { total: 0, byLabel: {} });
+      z.total++; z.byLabel[d.label] = (z.byLabel[d.label] || 0) + 1;
+      state.vehicles++;
+      const maxT = Math.max(...Object.values(state.zones).map((v) => v.total));
+      map.setZoneCount(d.zone, z.total);
+      ui.updateZoneCard(d.zone, z.byLabel, z.total, maxT);
+      ui.setStats({ frames: state.done.size, vehicles: state.vehicles, alerts: state.alerts });
+      await sleep(CFG.dropDelayMs);
+    }
+  } else ui.log(`${res.image_id} zaten sayılmıştı, bölge sayaçları değişmedi`);
+
+  // 3) GLM agent decides threat levels
+  const agent = await glm(res.image_id);
+  applyAgent(res, agent);
+}
+
+async function glm(imageId) {
+  const mode = $('#glm-mode').value;
+  if (mode === 'off') return null;
+  if (mode === 'cached') {
+    const saved = await loadAgent(imageId);
+    if (saved) { ui.log(`✦ GLM · kayıtlı çıktı kullanıldı (${imageId})`, 'warn'); return saved; }
+  }
+  ui.log(`✦ GLM AJAN BAŞLADI · ${imageId} · LOCATE → TRACKS → MOTION → REPORTS → ASSESS`, 'warn');
+  brain.reset(imageId);
+  try {
+    const out = await api.runAgent(imageId, (ev) => {
+      brain.event(ev);
+      if (ev.type === 'done') brain.finish(`${imageId} · ${ev.llm_calls} GLM çağrısı · ${ev.secs}s`);
+    });
+    return out;
+  } catch (e) {
+    brain.finish(`HATA · ${e.message}`);
+    ui.log(`GLM HATA · ${e.message}`, 'err');
+    return null;
+  }
+}
+
+function applyAgent(res, agent) {
   const levels = levelsByDet(agent);
   for (const d of res.detections) {
     const lv = levels[d.det_id];
@@ -104,24 +150,10 @@ async function run(file, imageId) {
   }
   renderAlerts($('#alerts'), agent, res.image_id);
   const n = agent?.assessment?.alerts?.length || 0;
-  ui.log(agent ? `✦ GLM · ${n} uyarı · en yüksek: ${maxLevel(levels) || '—'}` : `✦ GLM çıktısı yok (${res.image_id})`, agent ? 'warn' : '');
-
-  await sleep(900);
-  await map.overview();
-  if (!fresh) return ui.log(`${res.image_id} zaten sayılmıştı, bölge sayaçları değişmedi`);
-
-  state.done.add(res.image_id);
+  if (!agent) return;
   state.alerts += n;
+  ui.setStats({ frames: state.done.size, vehicles: state.vehicles, alerts: state.alerts });
   const top = maxLevel(levels);
   if (top) { map.setZoneThreat(res.zone, LEVELS[top]); ui.setZoneLevel(res.zone, top); }
-  for (const d of res.detections) {
-    const z = (state.zones[d.zone] ||= { total: 0, byLabel: {} });
-    z.total++; z.byLabel[d.label] = (z.byLabel[d.label] || 0) + 1;
-    state.vehicles++;
-    const maxT = Math.max(...Object.values(state.zones).map((v) => v.total));
-    map.setZoneCount(d.zone, z.total);
-    ui.updateZoneCard(d.zone, z.byLabel, z.total, maxT);
-    ui.setStats({ frames: state.done.size, vehicles: state.vehicles, alerts: state.alerts });
-    await sleep(CFG.dropDelayMs);
-  }
+  ui.log(`✦ GLM KARAR · ${n} uyarı · en yüksek: ${top ? top.toUpperCase() : '—'}`, top === 'yuksek' ? 'err' : 'warn');
 }
