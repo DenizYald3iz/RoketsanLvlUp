@@ -1,5 +1,5 @@
 from s2agent.data import get_data
-from s2agent.geo import hhmm_to_min, pixel_to_latlon
+from s2agent.geo import hhmm_to_min
 from s2agent.registry import run_tool
 from s2agent.tools.reports import parse_claim, parse_location
 
@@ -86,8 +86,7 @@ def test_compare_verdicts():
 def test_compare_edge_cases():
     assert "error" in compare("img_003839", "R999")
     assert compare("img_003839", "R100")["verdict"] == "irrelevant"  # ~1.1 km outside this frame
-    # LOCATE's det_id is reused when a detection sits at the same spot
-    b = D.boxes[(D.boxes.image_id == "img_000267") & (D.boxes.label == "truck")].sort_values("conf").iloc[-1]
-    lat, lon = pixel_to_latlon(b.cx, b.cy, D.meta["img_000267"])
-    ev = {"detections": {"detections": [{"det_id": "D7", "label": "truck", "conf": 0.78, "lat": lat, "lon": lon}]}}
-    assert "D7" in compare("img_000267", "R052", ev)["related"]
+    # refers to LOCATE's det_ids
+    dets = run_tool("get_detections", {}, stage="LOCATE", image_id="img_000267", evidence={}).result["detections"]
+    truck = next(d["det_id"] for d in dets if d["label"] == "truck")
+    assert truck in compare("img_000267", "R052")["related"]

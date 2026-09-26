@@ -2,8 +2,9 @@
 Rule (task PDF): if a report contradicts our detections/tracks, trust our evidence and ignore the report."""
 import re
 
-from ..geo import dist_to_frame_m, frame_center, haversine_m, hhmm_to_min, pixel_to_latlon
+from ..geo import dist_to_frame_m, frame_center, haversine_m, hhmm_to_min
 from ..registry import ToolContext, stage_tool
+from .locate import get_detections
 
 # "39.9374N 32.8483E", also tolerates "39.9374 N, 32.8483 E" / "39.9374°N 32.8483°E"
 _COORD = re.compile(r"(\d{1,2}\.\d+)\s*°?\s*N[\s,;]*(\d{1,3}\.\d+)\s*°?\s*E", re.IGNORECASE)
@@ -135,15 +136,9 @@ def _motion(pts: list[tuple[float, float]], base: tuple[float, float]) -> dict:
 def _scene(ctx: ToolContext) -> tuple[list[dict], list[dict]]:
     """Detections (conf >= LO_CONF) and tracks ending at this image's capture time, with lat/lon."""
     meta = ctx.data.meta[ctx.image_id]
-    ev_dets = ctx.evidence.get("detections", {}).get("detections") or []
-    boxes = ctx.data.boxes
-    dets = []
-    for b in boxes[(boxes.image_id == ctx.image_id) & (boxes.conf >= LO_CONF)].itertuples():
-        lat, lon = pixel_to_latlon(b.cx, b.cy, meta)
-        # reuse LOCATE's det_id when that tool has run, so ASSESS can cross-reference
-        same = [d for d in ev_dets if "det_id" in d and haversine_m(lat, lon, d["lat"], d["lon"]) < 1.0]
-        ref = same[0]["det_id"] if same else f"{b.label}@{b.conf:.2f}"
-        dets.append({"ref": ref, "label": b.label, "conf": round(float(b.conf), 2), "lat": lat, "lon": lon})
+    # Same pipeline as LOCATE (detector + NMS). det_ids are assigned in conf order after the min_conf cut,
+    # so they match the det_ids in evidence.detections.
+    dets = [{**d, "ref": d["det_id"]} for d in get_detections(min_conf=LO_CONF, ctx=ctx)["detections"]]
 
     tr = ctx.data.tracks
     ends = tr.groupby("track_id")["time"].max()
