@@ -6,6 +6,8 @@ To add a stage: append a Stage here and tag its tools with @stage_tool("<NAME>")
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .tools.assess import auto_assessment
+
 Evidence = dict
 ToolCall = tuple[str, dict]
 
@@ -71,10 +73,10 @@ STAGES: list[Stage] = [
     Stage(
         "ASSESS",
         "Toplanan delillere göre hangi durumların dikkat gerektirdiğine karar ver ve submit_assessment çağır. "
-        "Her alert için gerekçe ve dayandığı veriyi (track_id, hız, mesafe, ETA, report_id) yaz. "
+        "Alert'ler araç/track hakkındadır; her alert için gerekçe ve dayandığı veriyi (det_id, track_id, hız, mesafe, "
+        "ETA, report_id + verdict) yaz. 'contradicts' raporlar yok sayılır, alert konusu olmaz. "
         "Sadece delillerde olan sayıları kullan; uydurma.",
         requires=["assessment"],
-        fallback=lambda ev: [("submit_assessment", {
-            "alerts": [], "summary": "LLM tur limitinde değerlendirme üretemedi (otomatik kayıt)."})],
+        fallback=lambda ev: [("submit_assessment", auto_assessment(ev))],
     ),
 ]

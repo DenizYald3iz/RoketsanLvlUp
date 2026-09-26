@@ -175,7 +175,7 @@ Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO;
 | MOTION | `get_track_points(track_id, last_n=25)` | Ham noktalar (time, lat, lon, base_dist_m) | – | ✅ |
 | REPORTS | `find_reports(radius_m=300, window_min=120)` | Çekimden önceki `window_min` dk içinde, koordinatı çerçeveye `radius_m` yakın ya da bölge adı görüntünün bölgesi olan raporlar; konumsuz duyurular ayrı `general` listesinde | `reports` | ✅ |
 | REPORTS | `compare_report(report_id)` | Rapor iddiası (tip, sayı, durma/hareket/üsse yaklaşma, dost beyanı) ↔ tespitler + çekim anındaki track'ler, kural tabanlı: `consistent / contradicts / unverifiable / irrelevant` | `report_checks[report_id]` | ✅ |
-| ASSESS | `submit_assessment(alerts, summary, ignored_reports)` | Nihai yapılandırılmış çıktı (Pydantic `Alert` şeması) | `assessment` | ✅ |
+| ASSESS | `submit_assessment(alerts, summary, ignored_reports)` | Nihai yapılandırılmış çıktı (Pydantic `Alert` şeması). Id'leri delillere karşı doğrular (ilk hatalı çağrı sorun listesiyle reddedilir, ikincisi uyarıyla kabul), `contradicts` raporları otomatik yok sayar. Tur biterse kural tabanlı `auto_assessment` | `assessment` | ✅ |
 
 **Dönüş şemaları** her tool'un docstring'inde yazıyor (`s2agent/tools/*.py`). Gate'ler şu alanlara güvenir, **isimlerini değiştirme**:
 - `matches.matches[].track_id` → MOTION gate
