@@ -46,9 +46,10 @@ export function renderDetections(res, onHover, onClick) {
   $('#det-title').textContent = `Görüntü ve tespitler · ${res.image_id} · ${res.capture_time}`;
 }
 
-export function markDetectionRow(key, level) {
+export function markDetectionRow(key, level, conf = null) {
   const td = document.querySelector(`#dets tr[data-key="${key}"] .lvl`);
-  if (td) td.innerHTML = `<span class="lv lv-${level}">${LEVEL_TR[level] || level}</span>`;
+  if (td) td.innerHTML = `<span class="lv lv-${level}">${LEVEL_TR[level] || level}</span>` +
+    (conf != null ? `<br><small title="alert güven skoru">güven %${Math.round(conf * 100)}</small>` : '');
 }
 
 let onLog = null;

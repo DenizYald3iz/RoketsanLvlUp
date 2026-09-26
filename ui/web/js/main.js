@@ -6,7 +6,7 @@ import { sleep } from './geo.js';
 import { createMap } from './map.js';
 import { createImageView } from './imageView.js';
 import * as ui from './panels.js';
-import { LEVEL_TR, LEVELS, levelsByDet, loadAgent, maxLevel, renderAlerts } from './agent.js';
+import { LEVEL_TR, LEVELS, confByDet, levelsByDet, loadAgent, maxLevel, renderAlerts } from './agent.js';
 import { createBrain } from './brain.js';
 import { createInspector } from './inspect.js';
 import { createIntel } from './intel.js';
@@ -101,7 +101,8 @@ async function revisit(id) {
   r.res.detections.forEach((d) => iv.addBox(d));
   ui.renderDetections(r.res, (key, on) => { map.highlight(key, on); iv.highlight(on ? key : null); }, selectVehicle);
   side.badge('image', String(r.res.detections.length));
-  for (const [det, lv] of Object.entries(levelsByDet(r.agent))) ui.markDetectionRow(`${id}/${det}`, lv);
+  const confs = confByDet(r.agent);
+  for (const [det, lv] of Object.entries(levelsByDet(r.agent))) ui.markDetectionRow(`${id}/${det}`, lv, confs[det]);
   intel.clear();
   r.reports.forEach((x) => intel.add(x));
   reportBadge();
@@ -267,12 +268,12 @@ async function selectVehicle(key) {
 function applyAgent(res, agent) {
   Object.assign(trk.kin, agent?.kinematics || {});
   tagMatches(res.image_id, agent?.matches?.matches);
-  const levels = levelsByDet(agent);
+  const levels = levelsByDet(agent), confs = confByDet(agent);
   for (const d of res.detections) {
     const lv = levels[d.det_id];
     if (!lv) continue;
     map.setDetLevel(d.key, lv);
-    ui.markDetectionRow(d.key, lv);
+    ui.markDetectionRow(d.key, lv, confs[d.det_id]);
   }
   renderAlerts($('#alerts'), agent, res.image_id);
   if (!agent) return;
