@@ -188,11 +188,20 @@ def _check_motion(claim: str, trk: dict | None, seen: bool) -> tuple[bool | None
     return (True if cl < -CLOSE_MPS else None), txt
 
 
-def _check_vehicle_claim(c: dict, lat: float, lon: float, dets: list, tracks: list) -> tuple[list, list]:
+def _check_vehicle_claim(c: dict, lat: float, lon: float, dets: list, tracks: list,
+                         det2trk: dict | None = None) -> tuple[list, list]:
     checks, related = [], []
+    by_id = {t["track_id"]: t for t in tracks}
+
+    def trk_of(d: dict) -> dict | None:
+        """A detection's track: from match_tracks when available (a detection without a match has none)."""
+        if det2trk is not None:
+            return by_id.get(det2trk.get(d["ref"]))
+        return _nearest(tracks, d["lat"], d["lon"], SUBJECT_M)
+
     area = [d for d in dets if haversine_m(lat, lon, d["lat"], d["lon"]) <= AREA_M]
     subj_det = _nearest(dets, lat, lon, SUBJECT_M)
-    subj_trk = _nearest(tracks, lat, lon, SUBJECT_M)
+    subj_trk = trk_of(subj_det) if subj_det else _nearest(tracks, lat, lon, SUBJECT_M)
     ty = c["type"] or "any"
 
     if c["min_count"]:  # "busier than the usual N"
@@ -209,6 +218,14 @@ def _check_vehicle_claim(c: dict, lat: float, lon: float, dets: list, tracks: li
                        "ours": f"{AREA_M:.0f} m içinde {_TYPE_TR[ty]}: {n_hi} (conf≥{HI_CONF}), {n_lo} (conf≥{LO_CONF}); "
                                f"iddia {c['count']}"})
         related += [d["ref"] for d in match]
+        # single-vehicle claim: the vehicle AT the reported point must be of that type
+        near_ok = [d for d in match if haversine_m(lat, lon, d["lat"], d["lon"]) <= SUBJECT_M]
+        if c["count"] == 1 and c["type"] and subj_det and not near_ok and subj_det["conf"] >= HI_CONF:
+            dm = haversine_m(lat, lon, subj_det["lat"], subj_det["lon"])
+            checks.append({"aspect": "type", "ok": False,
+                           "ours": f"rapor noktasındaki araç {subj_det['ref']} {subj_det['label']} ({dm:.0f} m, "
+                                   f"conf {subj_det['conf']}); iddia {_TYPE_TR[ty]}"})
+            related.append(subj_det["ref"])
     elif c["type"]:
         if subj_det is None:
             checks.append({"aspect": "type", "ok": False,
@@ -223,8 +240,7 @@ def _check_vehicle_claim(c: dict, lat: float, lon: float, dets: list, tracks: li
     group = []  # count claims ("5 trucks stopped") are about every counted vehicle, not just the one at the point
     if c["count"]:
         for d in area:
-            if _type_ok(ty, d["label"]) and (t := _nearest(tracks, d["lat"], d["lon"], SUBJECT_M)) \
-                    and t not in group:
+            if _type_ok(ty, d["label"]) and (t := trk_of(d)) and t not in group:
                 group.append(t)
     if c["motion"] and group:
         res = [(t, *_check_motion(c["motion"], t, True)) for t in group]
@@ -240,7 +256,7 @@ def _check_vehicle_claim(c: dict, lat: float, lon: float, dets: list, tracks: li
         seen = subj_det is not None or bool(c["count"] and any(_type_ok(ty, d["label"]) for d in area))
         ok, txt = _check_motion(c["motion"], subj_trk, seen)
         checks.append({"aspect": "motion", "ok": ok, "ours": f"{txt}; iddia {c['motion']}"})
-    if subj_trk:
+    if subj_trk and (subj_det is None or subj_det["ref"] in related):  # only the track of a vehicle we cited
         related.append(subj_trk["track_id"])
     return checks, related
 
@@ -284,7 +300,7 @@ def compare_report(report_id: str, *, ctx: ToolContext) -> dict:
     tespitleri ve çekim anındaki track'lerle karşılaştırır (LLM çağrısı yok, kural tabanlı).
     Dönüş: {report_id, source, claim:{type,count,motion,friendly,...},
             verdict: consistent|contradicts|unverifiable|irrelevant, checks:[{aspect, ok, ours}],
-            related:[det/track id], reason}.
+            related:[det/track id], det_tracks:{det_id: track_id|null (match_tracks'e göre; null = kaydı yok)}, reason}.
     contradicts → rapor yok sayılır (tespit esas). friendly=true ve consistent ise araç dost olabilir;
     friendly iddiası tek başına doğrulanamaz."""
     rep = next((r for r in ctx.data.reports if r["report_id"] == report_id), None)
@@ -307,7 +323,12 @@ def compare_report(report_id: str, *, ctx: ToolContext) -> dict:
         return {**out, "verdict": "irrelevant", "checks": [], "related": [],
                 "reason": f"Raporun konumu görüntü çerçevesinin {d:.0f} m dışında."}
 
-    checks, related = _check_vehicle_claim(claim, loc["lat"], loc["lon"], dets, tracks)
+    m = ctx.evidence.get("matches")
+    det2trk = {x["det_id"]: x["track_id"] for x in m["matches"]} if m else None
+    checks, related = _check_vehicle_claim(claim, loc["lat"], loc["lon"], dets, tracks, det2trk)
+    related = list(dict.fromkeys(related))
+    if det2trk is not None:  # make det↔track links explicit so they are not guessed
+        out["det_tracks"] = {r: det2trk.get(r) for r in related if r.startswith("D")}
     oks = [ch["ok"] for ch in checks]
     verdict = ("contradicts" if False in oks else "consistent" if oks and all(oks) else "unverifiable")
     reason = "; ".join(f"{ch['aspect']}: {'uyumlu' if ch['ok'] else 'ÇELİŞKİ' if ch['ok'] is False else 'zayıf'} "
@@ -316,4 +337,4 @@ def compare_report(report_id: str, *, ctx: ToolContext) -> dict:
         reason += "; dost beyanı " + {"contradicts": "tespitle çeliştiği için geçersiz",
                                       "consistent": "kimlik açısından doğrulanamaz, tespitle çelişmiyor"}.get(
             verdict, "tespitle desteklenmiyor (zayıf); dost kabul etmek için yeterli değil")
-    return {**out, "verdict": verdict, "checks": checks, "related": list(dict.fromkeys(related)), "reason": reason}
+    return {**out, "verdict": verdict, "checks": checks, "related": related, "reason": reason}

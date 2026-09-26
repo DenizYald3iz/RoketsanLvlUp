@@ -94,3 +94,15 @@ def test_compare_edge_cases():
     dets = run_tool("get_detections", {}, stage="LOCATE", image_id="img_000267", evidence={}).result["detections"]
     truck = next(d["det_id"] for d in dets if d["label"] == "truck")
     assert truck in compare("img_000267", "R052")["related"]
+
+
+def test_compare_report_links_tracks_via_match_tracks_only():
+    # R000 "1 kamyon" at img_003839: point sits on a van (D02); the truck (D05) has no track.
+    # T0182 belongs to car D00 and must not be attached to the truck claim.
+    from s2agent.registry import run_tool
+    img, ev = "img_003839", {}
+    for name, stage in (("get_image_info", "LOCATE"), ("match_tracks", "TRACKS")):
+        ev.update(run_tool(name, {}, stage=stage, image_id=img, evidence=ev).evidence_update)
+    r = run_tool("compare_report", {"report_id": "R000"}, stage="REPORTS", image_id=img, evidence=ev).result
+    assert "T0182" not in r["related"] and r["det_tracks"]["D05"] is None
+    assert r["verdict"] == "contradicts"

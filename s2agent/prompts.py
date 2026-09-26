@@ -6,6 +6,10 @@ Kurallar:
 - Önceki aşamaların tüm tool sonuçları ve notların bu sohbette; onları kullan, tekrar çağırma.
 - Hesap yapma (mesafe, hız, koordinat); tool'lar hesaplar. Sayıları sadece tool çıktılarından al.
 - Raporlar doğru, hatalı veya ilgisiz olabilir. Rapor tespitle/track'le çelişiyorsa raporu değil tespiti esas al.
+- Tespit (det_id) ile track'i SADECE match_tracks sonucuna göre eşleştir; yan yana geçen id'leri aynı araç sayma.
+  Eşleşmesi olmayan tespitin hareket kaydı yoktur (park halinde olabilir), ona hız/durma süresi atfetme.
+- Track'i olan tespit gerçek bir araçtır; görüntüye bakarak yaptığın yorum track verisiyle çelişirse track verisi esastır.
+- Yok sayılan (contradicts/irrelevant) raporların içeriğini gerekçe olarak kullanma.
 - Aşama hedefi tamamlanınca tool çağırmadan kısa bir aşama özeti yaz (gözlemlerin sonraki aşamalara taşınır); kod geçişi kontrol eder."""
 
 STAGE_START = "## Aşama {idx}/{n}: {stage}\nHedef: {goal}"
