@@ -75,6 +75,10 @@ STAGES: list[Stage] = [
         "Toplanan delillere göre hangi durumların dikkat gerektirdiğine karar ver ve submit_assessment çağır. "
         "Alert'ler araç/track hakkındadır; her alert için gerekçe ve dayandığı veriyi (det_id, track_id, hız, mesafe, "
         "ETA, report_id + verdict) yaz. 'contradicts' raporlar yok sayılır, alert konusu olmaz. "
+        "Seviye kuralları: yuksek = üsse yaklaşıyor ve ETA <= 10 dk; orta = üsse yaklaşıyor ve ETA <= 30 dk, "
+        "ya da loitering (üs çevresinde dolaşma); dusuk = park/duran araç ya da bilgi amaçlı. "
+        "Dost beyanı (friendly) içeren rapor 'consistent' ise o aracın seviyesini bir kademe düşür ama alert'i "
+        "kaldırma, gerekçeye 'dost beyanı doğrulanamaz' yaz; 'contradicts' ise dost beyanını yok say. "
         "Sadece delillerde olan sayıları kullan; uydurma.",
         requires=["assessment"],
         fallback=lambda ev: [("submit_assessment", auto_assessment(ev))],

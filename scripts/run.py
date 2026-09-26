@@ -1,10 +1,12 @@
 """Run the agent.
 
     python -m scripts.run img_003839            # one image, prints the trace
+    python -m scripts.run img_a img_b --sample 10 # given + random images up to 10, in parallel
     python -m scripts.run --all --workers 4      # every image → outputs/<image_id>.json
 """
 import argparse
 import json
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -58,25 +60,39 @@ def run_live(image_id: str, graph) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("image_id", nargs="?")
+    ap.add_argument("image_ids", nargs="*")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--sample", type=int, default=0, help="N random images (seed 7)")
     ap.add_argument("--workers", type=int, default=4)  # gateway allows 4 concurrent requests
     a = ap.parse_args()
 
     print(f"spend so far: {assert_budget():.4f} USD")
     graph = build_graph(make_llm())
-    if a.all:
+    ids = list(a.image_ids)
+    if a.sample:
+        rest = [i for i in get_data().image_ids() if i not in ids]
+        ids += random.Random(7).sample(rest, max(0, a.sample - len(ids)))
+    if a.all or len(ids) > 1:
+        ids = get_data().image_ids() if a.all else ids
+
         def one(i):
+            t0 = time.time()
             try:
-                return i, save(i, run_image(i, graph=graph))
+                st = run_image(i, graph=graph)
+                save(i, st)
+                n = sum(t["kind"] == "llm" for t in st["trace"])
+                auto = sum(t["kind"] == "tool" and t["source"] == "auto" for t in st["trace"])
+                al = st["evidence"].get("assessment", {}).get("alerts", [])
+                lv = ", ".join(f"{x['level']}:{x['subject']}" for x in al) or "alert yok"
+                return f"{i}  {time.time() - t0:5.0f}s  {n} LLM  auto={auto}  → {lv}"
             except Exception as e:  # keep the batch going
-                return i, f"ERROR {e}"
+                return f"{i}  ERROR {type(e).__name__}: {e}"
         with ThreadPoolExecutor(a.workers) as ex:
-            for i, res in ex.map(one, get_data().image_ids()):
-                print(i, res)
+            for line in ex.map(one, ids):
+                print(line, flush=True)
         print(f"spend after: {assert_budget():.4f} USD")
     else:
-        state = run_live(a.image_id or get_data().image_ids()[0], graph)
+        state = run_live(ids[0] if ids else get_data().image_ids()[0], graph)
         print("saved", save(state["image_id"], state))
         print(f"spend: {assert_budget():.4f} USD")
 
