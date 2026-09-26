@@ -5,10 +5,12 @@
 """
 import argparse
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from s2agent.budget import assert_budget
+from s2agent.config import CFG
 from s2agent.data import get_data
 from s2agent.graph import build_graph, run_image
 from s2agent.llm import make_llm
@@ -24,16 +26,34 @@ def save(image_id: str, state: dict) -> Path:
     return p
 
 
-def print_trace(state: dict) -> None:
-    for t in state["trace"]:
-        if t["kind"] == "llm":
-            calls = ", ".join(f"{c['name']}({json.dumps(c['args'], ensure_ascii=False)})" for c in t["tool_calls"])
-            print(f"[{t['stage']}] LLM: {t['text'][:300]!r} {('→ ' + calls) if calls else ''}")
-        elif t["kind"] == "tool":
-            print(f"[{t['stage']}]   {t['source']} {t['name']} ⇒ {t['result'][:200]}")
-        else:
-            print(f"[{t['stage']}] GATE {t['status']} {t.get('missing') or ''}")
-    print(json.dumps(state["evidence"].get("assessment"), ensure_ascii=False, indent=1))
+def fmt(t: dict, t0: float) -> str:
+    head = f"{t['ts'] - t0:6.1f}s [{t['stage']}]"
+    if t["kind"] == "llm":
+        calls = ", ".join(f"{c['name']}({json.dumps(c['args'], ensure_ascii=False)[:80]})" for c in t["tool_calls"])
+        return f"{head} LLM #{t['n']}: {t['text'][:160]!r}" + (f" → {calls}" if calls else "")
+    if t["kind"] == "tool":
+        return f"{head}   {t['source']} {t['name']} ⇒ {t['result'][:160]}"
+    return f"{head} GATE {t['status']} {t.get('missing') or ''}"
+
+
+def run_live(image_id: str, graph) -> dict:
+    """Stream the graph: print every LLM call / tool call / gate decision as it happens."""
+    t0, n, state = time.time(), 0, {}
+    init = {"image_id": image_id, "stage_idx": 0, "turns": 0, "evidence": {}, "trace": []}
+    for mode, chunk in graph.stream(init, {"recursion_limit": CFG.recursion_limit}, stream_mode=["updates", "values"]):
+        if mode == "values":
+            state = chunk
+            continue
+        for upd in chunk.values():
+            for t in (upd or {}).get("trace", []):
+                if t["kind"] == "llm":
+                    n += 1
+                    t["n"] = n
+                print(fmt(t, t0), flush=True)
+    a = state["evidence"].get("assessment")
+    print(f"\n=== {image_id}: {n} LLM çağrısı, {time.time() - t0:.0f}s ===")
+    print(json.dumps(a, ensure_ascii=False, indent=1))
+    return state
 
 
 def main() -> None:
@@ -56,9 +76,9 @@ def main() -> None:
                 print(i, res)
         print(f"spend after: {assert_budget():.4f} USD")
     else:
-        state = run_image(a.image_id or get_data().image_ids()[0], graph=graph)
-        print_trace(state)
+        state = run_live(a.image_id or get_data().image_ids()[0], graph)
         print("saved", save(state["image_id"], state))
+        print(f"spend: {assert_budget():.4f} USD")
 
 
 if __name__ == "__main__":

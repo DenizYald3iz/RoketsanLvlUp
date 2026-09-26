@@ -50,9 +50,9 @@ def test_tool_calling_llm_passes_gates_without_fallback():
 
 def test_keyed_evidence_merges():
     ev = {}
-    for tid in ("T1", "T2"):
+    for tid in ("T0001", "T0002"):
         ev.update(run_tool("get_track_kinematics", {"track_id": tid}, stage="MOTION", image_id=IMG, evidence=ev).evidence_update)
-    assert set(ev["kinematics"]) == {"T1", "T2"}
+    assert set(ev["kinematics"]) == {"T0001", "T0002"}
 
 
 def test_get_image_info_returns_and_stores_detections():
