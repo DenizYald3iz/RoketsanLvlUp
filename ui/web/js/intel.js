@@ -7,7 +7,7 @@ const EMPTY = '<p class="empty">Görüntüyle ilgili raporlar ve doğrulama sonu
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 export function createIntel(root) {
-  const byId = {};
+  const byId = {}, data = {};
   return {
     add(r) {
       root.querySelector('.empty')?.remove();
@@ -18,13 +18,15 @@ export function createIntel(root) {
         <span class="stamp">${label}</span></div><p>${esc(r.text)}</p>${r.reason ? `<div class="why">${esc(r.reason)}</div>` : ''}`;
       if (!byId[r.report_id]) root.appendChild(el);
       byId[r.report_id] = el;
+      data[r.report_id] = r;
     },
     count: () => Object.keys(byId).length,
+    items: () => Object.values(data),
     counts() {
       const c = {};
       for (const el of Object.values(byId)) for (const k of ['ok', 'bad', 'unk']) if (el.classList.contains(k)) c[k] = (c[k] || 0) + 1;
       return c;
     },
-    clear() { for (const k of Object.keys(byId)) delete byId[k]; root.innerHTML = EMPTY; },
+    clear() { for (const k of Object.keys(byId)) { delete byId[k]; delete data[k]; } root.innerHTML = EMPTY; },
   };
 }

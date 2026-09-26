@@ -6,14 +6,15 @@ import { sleep } from './geo.js';
 import { createMap } from './map.js';
 import { createImageView } from './imageView.js';
 import * as ui from './panels.js';
-import { LEVELS, levelsByDet, loadAgent, maxLevel, renderAlerts } from './agent.js';
+import { LEVEL_TR, LEVELS, levelsByDet, loadAgent, maxLevel, renderAlerts } from './agent.js';
 import { createBrain } from './brain.js';
 import { createInspector } from './inspect.js';
 import { createIntel } from './intel.js';
 import { createLayout } from './layout.js';
 
 const $ = (s) => document.querySelector(s);
-const state = { zones: {}, done: new Set(), vehicles: 0, alerts: 0, busy: false, queue: [] };
+const state = { zones: {}, done: new Set(), vehicles: 0, alerts: 0, busy: false, queue: [], current: null };
+const results = {}; // image_id → { res, agent, url, reports }: finished frames are shown again, never re-run
 const trk = { ofDet: {}, kin: {}, cache: {} }; // det key → track id, track id → kinematics / points
 
 const layout = await api.getLayout();
@@ -55,27 +56,58 @@ $('#demo').onclick = async () => {
   withAgent.forEach(enqueueSample);
 };
 
-// deep link: ?image=img_003839&glm=cached|live|off
-const qs = new URLSearchParams(location.search);
-if (qs.get('glm')) $('#glm-mode').value = qs.get('glm');
-if (known.has(qs.get('image'))) { $('#sample').value = qs.get('image'); enqueueSample(qs.get('image')); }
 
-function enqueueFiles(files) {
-  for (const f of files) state.queue.push({ file: f, imageId: $('#meta-id').value.trim() });
+function pending(id) { return state.current === id || state.queue.some((j) => j.imageId === id); }
+
+// running/queued → ignore; finished → queue a replay of the stored result (never a new GLM run);
+// otherwise queue a real run. Everything goes through the queue so screens never mix two images.
+async function request(id, getFile) {
+  if (pending(id)) return ui.log(`${id} zaten ${state.current === id ? 'işleniyor' : 'sırada'} — tekrar eklenmedi`, 'warn');
+  if (results[id]) {
+    state.queue.push({ imageId: id, revisit: true, file: true });
+    return pump();
+  }
+  state.queue.push({ imageId: id, file: null });
+  const job = state.queue.at(-1);
+  job.file = await getFile();
   pump();
 }
-async function enqueueSample(id) {
-  state.queue.push({ file: await api.sampleFile(id), imageId: id });
-  pump();
+function enqueueFiles(files) {
+  for (const f of files) request($('#meta-id').value.trim() || f.name.replace(/\.[^.]+$/, ''), async () => f);
+}
+function enqueueSample(id) {
+  return request(id, () => api.sampleFile(id));
 }
 async function pump() {
   if (state.busy) return;
   state.busy = true;
-  while (state.queue.length) {
+  while (state.queue.length && state.queue[0].file) {
     const job = state.queue.shift();
-    try { await run(job.file, job.imageId); } catch (e) { ui.log(`HATA · ${e.message}`, 'err'); iv.scanning(false); }
+    state.current = job.imageId;
+    try { await (job.revisit ? revisit(job.imageId) : run(job.file, job.imageId)); }
+    catch (e) { ui.log(`HATA · ${e.message}`, 'err'); iv.scanning(false); }
+    state.current = null;
   }
   state.busy = false;
+}
+
+// A frame that was already processed: bring its image, table, levels and reports back — no new GLM run.
+async function revisit(id) {
+  const r = results[id];
+  ui.log(`↺ ${id} zaten işlendi — kayıtlı sonucu gösteriliyor (yeniden çalıştırılmadı)`, 'ok');
+  $('#sample').value = id;
+  await iv.show(r.url);
+  iv.setSize(r.res.size);
+  r.res.detections.forEach((d) => iv.addBox(d));
+  ui.renderDetections(r.res, (key, on) => { map.highlight(key, on); iv.highlight(on ? key : null); }, selectVehicle);
+  side.badge('image', String(r.res.detections.length));
+  for (const [det, lv] of Object.entries(levelsByDet(r.agent))) ui.markDetectionRow(`${id}/${det}`, lv);
+  intel.clear();
+  r.reports.forEach((x) => intel.add(x));
+  reportBadge();
+  brain.cached(id);
+  map.clearTracks();
+  await map.focusFrame(r.res, r.url);
 }
 
 // ---------- one frame ----------
@@ -108,6 +140,7 @@ async function run(file, imageId) {
   if (!ctx.res) locate(ctx, await api.analyze(file, id, CFG.minConf)); // agent died before LOCATE
   await ctx.chain;
   applyAgent(ctx.res, agent);
+  results[id] = { res: ctx.res, agent, url: ctx.url, reports: intel.items() };
 }
 
 // LOCATE result (from GLM's get_image_info, or /api/analyze) → frame on map, drops, zone counts.
@@ -253,5 +286,10 @@ function applyAgent(res, agent) {
   const top = maxLevel(levels);
   side.badge('alerts', String(n), { hot: top === 'yuksek' });
   if (top) { map.setZoneThreat(res.zone, LEVELS[top]); ui.setZoneLevel(res.zone, top); }
-  ui.log(`✦ GLM KARAR · ${n} uyarı · en yüksek: ${top ? top.toUpperCase() : '—'}`, top === 'yuksek' ? 'err' : 'warn');
+  ui.log(`✦ GLM KARAR · ${n} uyarı · en yüksek: ${top ? LEVEL_TR[top] : '—'}`, top === 'yuksek' ? 'err' : 'warn');
 }
+
+// deep link (last, so everything above is initialised): ?image=img_003839&glm=cached|live|off
+const qs = new URLSearchParams(location.search);
+if (qs.get('glm')) $('#glm-mode').value = qs.get('glm');
+if (known.has(qs.get('image'))) { $('#sample').value = qs.get('image'); enqueueSample(qs.get('image')); }
