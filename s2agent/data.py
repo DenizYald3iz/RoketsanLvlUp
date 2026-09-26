@@ -33,11 +33,6 @@ class Data:
         raw = json.loads((self.dir / "field_reports.json").read_text())
         return [{"report_id": f"R{i:03d}", **r} for i, r in enumerate(raw)]
 
-    @cached_property
-    def boxes(self) -> pd.DataFrame:
-        """Day-1 detector output: image_id,label,conf,x,y,w,h,cx,cy,img_w,img_h,p_car..p_bg (mostly low-conf noise)."""
-        return pd.read_csv(self.dir / "pred_all_boxes.csv")
-
     def image_ids(self) -> list[str]:
         return sorted(self.meta)
 

@@ -36,7 +36,14 @@ def data():
     d = get_data()
     n = len(d.image_ids())
     d.image_path(d.image_ids()[0])
-    return f"{d.dir} — {n} görüntü, {len(d.tracks)} track satırı, {len(d.reports)} rapor, {len(d.boxes)} kutu"
+    return f"{d.dir} — {n} görüntü, {len(d.tracks)} track satırı, {len(d.reports)} rapor"
+
+
+def detector():
+    from s2agent.data import get_data
+    from s2agent.detector import get_detector
+    det, img = get_detector(), get_data().image_ids()[0]
+    return f"{type(det).__name__}, {img}: {len(det.predict(img))} ham kutu"
 
 
 def tools():
@@ -52,7 +59,7 @@ def gateway():
 
 
 print("Stage-2 agent kurulum kontrolü")
-for n, f in [("Python", py), ("Paketler", deps), (".env", env), ("Veri", data), ("Tool registry", tools),
+for n, f in [("Python", py), ("Paketler", deps), (".env", env), ("Veri", data), ("Detector", detector), ("Tool registry", tools),
              ("LLM gateway", gateway)]:
     check(n, f)
 print("\nHer şey hazır 🎉  →  python -m scripts.run" if ok else "\nYukarıdaki ❌ satırlarını düzelt.")

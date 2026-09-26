@@ -13,6 +13,7 @@ Contract
   truncated JSON copy goes back to the LLM. Later stages read from evidence, so the LLM never
   has to copy numbers around.
 - Return {"_image": data_url, ...} to show the LLM an image on its next turn.
+- Return {"_evidence": {key: value}} to fill extra evidence keys (not shown to the LLM twice).
 - Don't raise for expected problems; return {"error": "..."}. Unexpected exceptions are caught anyway.
 """
 import inspect
@@ -102,7 +103,7 @@ def run_tool(name: str, args: dict, *, stage: str, image_id: str, evidence: dict
         clean = args
 
     image = res.pop("_image", None)
-    update: dict[str, Any] = {}
+    update: dict[str, Any] = dict(res.pop("_evidence", None) or {})
     if spec.writes and "error" not in res:
         if spec.key_by:
             update[spec.writes] = {**evidence.get(spec.writes, {}), str(clean[spec.key_by]): res}

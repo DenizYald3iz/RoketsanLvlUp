@@ -1,12 +1,10 @@
-"""Detection backend. get_detections() only talks to `get_detector()`, so the source can be swapped
-without touching tools:
+"""Detection backend. Tools only call `get_detector().predict(image_id)`:
 
-    DETECTOR=csv   → data/stage2/pred_all_boxes.csv (default, offline)
-    DETECTOR=http  → POST image to DETECTOR_URL (GPU inference server)
+    DETECTOR=csv   → PRED_FILE (submission format, default data/stage2/pred_all_boxes_submission.csv)
+    DETECTOR=http  → POST image to DETECTOR_URL (GPU server), reply {"PredictionString": "..."}
 
-Every backend returns a DataFrame with the pred_all_boxes.csv columns:
-    label, conf, x, y, w, h, cx, cy, p_car, p_van, p_truck, p_bus, p_bg
-(x, y = top-left, cx, cy = centre, all in original image pixels; p_* optional → filled with NaN).
+PredictionString = "label conf x y w h label conf x y w h ..." (x, y = top-left px) or "none".
+predict() returns a DataFrame: label, conf, x, y, w, h, cx, cy.
 """
 import os
 from functools import lru_cache
@@ -14,36 +12,31 @@ from functools import lru_cache
 import httpx
 import pandas as pd
 
+from .config import ROOT
 from .data import get_data
 
-COLUMNS = ["label", "conf", "x", "y", "w", "h", "cx", "cy", "p_car", "p_van", "p_truck", "p_bus", "p_bg"]
+COLUMNS = ["label", "conf", "x", "y", "w", "h", "cx", "cy"]
 
 
-def _normalize(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    if "cx" not in df:
-        df["cx"] = df["x"] + df["w"] / 2
-    if "cy" not in df:
-        df["cy"] = df["y"] + df["h"] / 2
-    for c in COLUMNS:
-        if c not in df:
-            df[c] = float("nan")
-    return df[COLUMNS].reset_index(drop=True)
+def parse_prediction_string(s: str) -> pd.DataFrame:
+    tok = [] if not isinstance(s, str) or s.strip().lower() in ("", "none") else s.split()
+    rows = [(tok[i], *map(float, tok[i + 1:i + 6])) for i in range(0, len(tok) - 5, 6)]
+    df = pd.DataFrame(rows, columns=COLUMNS[:6])
+    df["cx"], df["cy"] = df.x + df.w / 2, df.y + df.h / 2
+    return df
 
 
 class CsvDetector:
-    """Precomputed day-1 predictions."""
+    def __init__(self, path):
+        sub = pd.read_csv(path, dtype=str, keep_default_na=False)
+        self.preds = dict(zip(sub.image_id, sub.PredictionString))
 
     def predict(self, image_id: str) -> pd.DataFrame:
-        b = get_data().boxes
-        return _normalize(b[b.image_id == image_id])
+        return parse_prediction_string(self.preds.get(image_id, "none"))
 
 
 class HttpDetector:
-    """GPU server contract:
-    POST {DETECTOR_URL}  multipart: file=<image bytes>, image_id=<str>
-    → 200 {"boxes": [{"label": "car", "conf": 0.91, "x": .., "y": .., "w": .., "h": .., "p_car": .., ...}]}
-    """
+    """POST {DETECTOR_URL} multipart: file=<image>, image_id=<str> → 200 {"PredictionString": "car 0.93 976 533 98 95 ..."}"""
 
     def __init__(self, url: str, timeout: float = 60):
         self.url, self.timeout = url, timeout
@@ -53,16 +46,14 @@ class HttpDetector:
         with open(path, "rb") as f:
             r = httpx.post(self.url, files={"file": (path.name, f)}, data={"image_id": image_id}, timeout=self.timeout)
         r.raise_for_status()
-        boxes = r.json().get("boxes", [])
-        return _normalize(pd.DataFrame(boxes, columns=None) if boxes else pd.DataFrame(columns=COLUMNS))
+        return parse_prediction_string(r.json().get("PredictionString", "none"))
 
 
 @lru_cache(maxsize=1)
 def get_detector():
-    kind = os.getenv("DETECTOR", "csv").lower()
-    if kind == "http":
+    if os.getenv("DETECTOR", "csv").lower() == "http":
         url = os.getenv("DETECTOR_URL")
         if not url:
             raise RuntimeError("DETECTOR=http ama DETECTOR_URL boş")
         return HttpDetector(url)
-    return CsvDetector()
+    return CsvDetector(ROOT / os.getenv("PRED_FILE", "data/stage2/pred_all_boxes_submission.csv"))

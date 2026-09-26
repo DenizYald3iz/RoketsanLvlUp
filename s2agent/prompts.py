@@ -15,11 +15,12 @@ Aşama hedefi: {goal}
 {evidence}"""
 
 TASK = "Görüntü: {image_id}. Aşama {stage} için gerekli tool'ları çağır."
+UPLOAD = "Yeni drone görüntüsü yüklendi: {image_id} (ekte). get_image_info ile başla."
 
 NUDGE = "Aşama {stage} henüz tamamlanmadı. Eksik: {missing}. İlgili tool'u çağır."
 
 
-def evidence_digest(ev: dict, per_key: int = 1500) -> str:
+def evidence_digest(ev: dict, per_key: int = 4000) -> str:
     if not ev:
         return "(henüz yok)"
     out = []

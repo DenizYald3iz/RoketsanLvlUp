@@ -49,3 +49,20 @@ def image_data_url(path: Path, max_side: int = 1280, crop: tuple[int, int, int, 
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+COMPASS = ["K", "KD", "D", "GD", "G", "GB", "B", "KB"]  # Kuzey, Kuzeydoğu, ...
+
+
+def compass(bearing: float) -> str:
+    return COMPASS[int((bearing + 22.5) // 45) % 8]
+
+
+def describe_point(zones: dict, lat: float, lon: float) -> dict:
+    """Nearest named zone + distance/direction from the base for a coordinate."""
+    base = zones["base"]
+    zd = [(z["name"], haversine_m(lat, lon, *z["center"])) for z in zones["zones"]]
+    name, dist = min(zd, key=lambda t: t[1])
+    brg = bearing_deg(base["lat"], base["lon"], lat, lon)
+    return {"zone": name, "zone_dist_m": round(dist), "base_dist_m": round(haversine_m(lat, lon, base["lat"], base["lon"])),
+            "bearing_from_base_deg": round(brg), "direction_from_base": compass(brg)}

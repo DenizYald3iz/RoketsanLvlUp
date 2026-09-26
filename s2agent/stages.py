@@ -37,10 +37,11 @@ def _report_ids(ev: Evidence) -> list[str]:
 STAGES: list[Stage] = [
     Stage(
         "LOCATE",
-        "Görüntünün nereyi/ne zamanı kapsadığını ve içindeki araçları (tip + koordinat) çıkar. "
-        "get_image_info ve get_detections çağır; tespitler şüpheliyse view_image ile bak.",
+        "Önce get_image_info çağır: görüntünün genel bilgisini VE tespit edilen araçları (tip + koordinat) birlikte "
+        "getirir. Sonuçları görüntüyle karşılaştır: sayı/tipler makul mü? type_uncertain ya da şüpheli tespit varsa "
+        "view_image ile o bölgeye bak; gerekirse get_detections'ı farklı min_conf ile tekrar çağır. Sonra kısa özet yaz.",
         requires=["image_info", "detections"],
-        fallback=lambda ev: [("get_image_info", {}), ("get_detections", {})],
+        fallback=lambda ev: [("get_image_info", {})],
         attach_image=True,
     ),
     Stage(

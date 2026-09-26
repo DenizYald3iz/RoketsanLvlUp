@@ -165,9 +165,9 @@ Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO;
 
 | Aşama | Tool | Ne yapar | Yazdığı evidence | Durum |
 |---|---|---|---|---|
-| hepsi | `zone_info(lat, lon)` | En yakın bölge, üsse mesafe ve yön | – | 🟡 |
-| LOCATE | `get_image_info()` | Çekim saati, piksel boyutu, köşe/merkez koordinatı, bölge, üsse mesafe | `image_info` | 🟡 |
-| LOCATE | `get_detections(min_conf=0.3)` | Detector'dan tespitleri alır, çakışan kutuları ayıklar (NMS), kutu merkezlerini lat/lon'a çevirir, tip belirsizliğini işaretler. `{det_id,label,conf,cx,cy,w,h,lat,lon,probs,type_uncertain}` | `detections` | ✅ |
+| hepsi | `zone_info(lat, lon)` | En yakın bölge, üsse mesafe ve yön | – | ✅ |
+| LOCATE | `get_image_info()` | **İlk çağrı.** Genel bilgi (saat, kapsam, bölge, üsse mesafe) + araç tespitleri (tip, lat/lon) | `image_info`, `detections` | ✅ |
+| LOCATE | `get_detections(min_conf=0.3)` | Detector'dan tespitleri alır, çakışan kutuları birleştirir (NMS), kutu merkezlerini lat/lon'a çevirir, tip belirsizliğini işaretler. `{det_id,label,conf,cx,cy,w,h,lat,lon,alt_labels,type_uncertain}` | `detections` | ✅ |
 | LOCATE, MOTION | `view_image(crop_x,crop_y,crop_w,crop_h)` | Görüntüyü (veya bir kırpımını) modele gösterir | – | ✅ |
 | TRACKS | `match_tracks(max_dist_m=15)` | `time == capture_time` noktalarıyla en yakın eşleşme + eşleşmeyenler | `matches` | 🟡 |
 | TRACKS | `list_tracks_near(radius_m=1000)` | Çekim anında çerçeve dışında kalan yakın track'ler | `nearby_tracks` | 🟡 |
@@ -190,26 +190,25 @@ Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO;
 - Raporların bir kısmı hatalı veya ilgisiz. **Rapor tespitle çelişiyorsa tespit esas alınır.**
 - `pred_all_boxes.csv` çoğunlukla düşük conf'lu gürültü (medyan conf 0.02). **conf ≥ 0.3** ile görüntü başına ~7 kutu kalıyor
   ve çerçevedeki track'lerin %99'unun 20 m yakınında bir tespit oluyor (0.5 ile %96). Önerilen: `min_conf=0.3`, `max_dist_m=20`.
-- Etiket ile `p_*` sınıf olasılıkları düşük conf'ta sık sık çelişiyor (0.3–0.5 arasında sadece %76 uyumlu). Tip karşılaştırırken `type_uncertain` alanına bak.
+- Düşük conf'ta araç tipi güvenilmez. Rapordaki tiple karşılaştırırken `type_uncertain` ve `alt_labels` alanlarına bak.
 
 ---
 
 ### Detector backend (CSV ↔ GPU)
-`get_detections` tespitleri doğrudan dosyadan okumaz, `s2agent/detector.py::get_detector()` üzerinden alır:
-
+`get_detections` tespitleri `s2agent/detector.py::get_detector()` üzerinden alır. Format, yarışmanın submission formatıyla aynıdır:
+```
+image_id,PredictionString
+img_000001,car 0.93 976 533 98 95 van 0.71 1012 276 150 76     # label conf x y w h ... (x,y = sol üst köşe, px)
+img_000002,none                                                 # hiç araç yoksa
+```
 | `.env` | Kaynak |
 |---|---|
-| `DETECTOR=csv` (varsayılan) | `data/stage2/pred_all_boxes.csv` (hazır tahminler, offline) |
-| `DETECTOR=http` + `DETECTOR_URL=...` | GPU inference sunucusu |
+| `DETECTOR=csv` (varsayılan) | `PRED_FILE` = `data/stage2/pred_all_boxes_submission.csv` |
+| `DETECTOR=http` + `DETECTOR_URL=...` | GPU sunucusu: `POST` multipart (`file`, `image_id`) → `{"PredictionString": "car 0.93 976 533 98 95 ..."}` |
 
-GPU sunucusunun uyması gereken sözleşme:
-```
-POST {DETECTOR_URL}   multipart/form-data: file=<görüntü>, image_id=<str>
-200 → {"boxes": [{"label": "car", "conf": 0.91, "x": 1183.5, "y": 191.2, "w": 63.1, "h": 40.0,
-                  "p_car": 0.94, "p_van": 0.04, "p_truck": 0.01, "p_bus": 0.01, "p_bg": 0.01}]}
-```
-`x, y` kutunun sol üst köşesi, `w, h` boyutları; hepsi orijinal görüntü pikseli cinsinden. `cx/cy` yoksa hesaplanır.
-`p_*` alanları opsiyoneldir. Aynı sözleşmeye uyan her sunucu (RF-DETR, YOLO, ...) tool'a dokunmadan kullanılabilir.
+Model aynı kutuya farklı etiketler verebilir (örn. `van 0.60`, `truck 0.32`, `car 0.26` aynı kutu). `get_detections` bu kutuları
+birleştirip (NMS, IoU ≥ 0.5) en yüksek conf'lu etiketi kullanır; diğer etiketleri `alt_labels`'a yazar. Alternatif bir etiketin
+conf'u ana etiketin en az yarısıysa `type_uncertain=true` olur.
 
 ## 5. Yeni tool yazma
 
@@ -316,7 +315,8 @@ fallback üzerinden sona ulaşılıyor; düzgün bir LLM gate'leri fallback'siz 
 | `zones.json` | Merkez üs + 8 bölge (ad, merkez koordinat). Raporlardaki bölge adları buradan eşlenir |
 | `tracks.csv` | `track_id,time,lat,lon`. 226 track × 25 nokta (son 2 saat, 5 dk arayla). Her track bir görüntünün çekim saatinde biter |
 | `field_reports.json` | 137 serbest metin rapor: `{time, source: official/third_party, text}`. Konum metinde koordinat (`39.9374N 32.8483E`) veya bölge adı olarak geçer |
-| `pred_all_boxes.csv` | 1. gün tespit modelinin çıktısı: `image_id,label,conf,x,y,w,h,cx,cy,img_w,img_h,p_car,p_van,p_truck,p_bus,p_bg` |
+| `pred_all_boxes_submission.csv` | 1. gün tespit modelinin çıktısı, submission formatında (`image_id,PredictionString`). Agent bunu kullanır |
+| `pred_all_boxes.csv` | Aynı tahminlerin eski, geniş formatı (`p_*` olasılıklarıyla). Sadece analiz için |
 | `gorev_tanimi.pdf` | Görev tanımı |
 
 Rapor türleri (gözlem): tespit iddiası ("5 kamyon durdu"), dost unsur beyanı ("planlı ikmal aracıdır, kimlik
@@ -338,6 +338,7 @@ teyit edildi"; dikkat kararını etkiler ama tespitle çelişirse yok sayılır)
 | `RECURSION_LIMIT` | `80` | LangGraph'ın toplam adım sınırı |
 | `MAX_TOOL_CHARS` | `6000` | LLM'e giden tool sonucunun karakter sınırı |
 | `DETECTOR` | `csv` | `csv` ya da `http` (bkz. Detector backend) |
+| `PRED_FILE` | `data/stage2/pred_all_boxes_submission.csv` | `DETECTOR=csv` için tahmin dosyası |
 | `DETECTOR_URL` | – | `DETECTOR=http` için GPU sunucusunun adresi |
 | `IMAGE_MAX_SIDE` | `1280` | Modele gönderilen görüntünün uzun kenarı (px). Token sayısı görüntü boyutuyla artar |
 

@@ -17,7 +17,7 @@ from . import tools as _tools  # noqa: F401 — registers all @stage_tool functi
 from .config import CFG
 from .data import get_data
 from .geo import image_data_url
-from .prompts import NUDGE, SYSTEM, TASK, evidence_digest
+from .prompts import NUDGE, SYSTEM, TASK, UPLOAD, evidence_digest
 from .registry import run_tool, tools_for_stage
 from .stages import STAGES, Stage
 
@@ -54,6 +54,7 @@ def build_graph(llm, stages: list[Stage] = STAGES, max_turns: int = CFG.max_turn
             task = TASK.format(image_id=s["image_id"], stage=st.name)
             content: Any = task
             if st.attach_image:
+                task = UPLOAD.format(image_id=s["image_id"])
                 url = image_data_url(get_data().image_path(s["image_id"]), CFG.image_max_side)
                 content = [{"type": "text", "text": task}, {"type": "image_url", "image_url": {"url": url}}]
             new_msgs = [SystemMessage(sys), HumanMessage(content)]

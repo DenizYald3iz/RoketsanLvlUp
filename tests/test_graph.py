@@ -29,7 +29,7 @@ def test_lazy_llm_still_finishes_via_fallback():
 def test_tool_calling_llm_passes_gates_without_fallback():
     done = AIMessage("aşama tamam")
     script = [
-        call("get_image_info"), call("get_detections", {"min_conf": 0.4}), done,  # LOCATE
+        call("get_image_info"), done,                                             # LOCATE
         call("match_tracks"), done,                                               # TRACKS
         done,                                                                     # MOTION: no matches → gate passes
         call("find_reports"), done,                                               # REPORTS: stub finds none
@@ -48,3 +48,18 @@ def test_keyed_evidence_merges():
     for tid in ("T1", "T2"):
         ev.update(run_tool("get_track_kinematics", {"track_id": tid}, stage="MOTION", image_id=IMG, evidence=ev).evidence_update)
     assert set(ev["kinematics"]) == {"T1", "T2"}
+
+
+def test_get_image_info_returns_and_stores_detections():
+    r = run_tool("get_image_info", {}, stage="LOCATE", image_id=IMG, evidence={})
+    assert r.result["vehicles"]["count"] > 0 and "capture_time" in r.result
+    assert set(r.evidence_update) == {"image_info", "detections"}
+    assert r.evidence_update["detections"] == r.result["vehicles"]
+    assert "_evidence" not in r.llm_text
+
+
+def test_locate_passes_after_single_get_image_info_call():
+    out = run_image(IMG, graph=build_graph(ScriptedLLM([call("get_image_info"), AIMessage("tamam")]), max_turns=4))
+    locate = [t for t in out["trace"] if t["stage"] == "LOCATE"]
+    assert [t["name"] for t in locate if t["kind"] == "tool"] == ["get_image_info"]
+    assert locate[-1]["status"] == "pass"

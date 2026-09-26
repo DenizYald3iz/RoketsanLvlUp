@@ -23,8 +23,7 @@ def test_csv_detections_have_geo_and_filter():
 
 
 def test_http_backend_same_output(monkeypatch):
-    rows = get_data().boxes.query("image_id == @IMG").drop(columns=["image_id", "cx", "cy"])
-    payload = {"boxes": rows.to_dict("records")}  # server omits cx/cy → backend derives them
+    payload = {"PredictionString": detector.get_detector().preds[IMG]}
 
     def fake_post(url, files, data, timeout):
         assert data["image_id"] == IMG
@@ -39,8 +38,10 @@ def test_http_backend_same_output(monkeypatch):
     finally:
         monkeypatch.delenv("DETECTOR")
         detector.get_detector.cache_clear()
-    via_csv = _dets()
-    assert via_http["by_label"] == via_csv["by_label"]
-    for a, b in zip(via_http["detections"], via_csv["detections"]):
-        assert (a["label"], a["conf"], a["probs"]) == (b["label"], b["conf"], b["probs"])
-        assert abs(a["cx"] - b["cx"]) <= 0.2 and abs(a["lat"] - b["lat"]) < 1e-5 and abs(a["lon"] - b["lon"]) < 1e-5
+    assert via_http == _dets()
+
+
+def test_parse_none_and_alt_labels():
+    assert detector.parse_prediction_string("none").empty
+    df = detector.parse_prediction_string("car 0.9 10 20 30 40 van 0.5 10 20 30 40")
+    assert list(df.label) == ["car", "van"] and df.cx[0] == 25 and df.cy[0] == 40
