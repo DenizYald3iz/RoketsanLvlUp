@@ -156,7 +156,10 @@ async function runLive(ctx) {
 
 function onAgentEvent(ctx, ev) {
   brain.event(ev);
-  if (ev.type === 'done') brain.finish(`${ctx.id} · ${ev.llm_calls} GLM çağrısı · ${ev.secs}s`);
+  if (ev.type === 'done') {
+    brain.finish(`${ctx.id} · ${ev.llm_calls} GLM çağrısı · ${ev.secs}s`);
+    ui.log(`✎ tam konuşma geçmişi → ${ev.debug}`, 'ok');
+  }
   if (ev.type !== 'trace') return;
   if (ev.stage === 'REPORTS' && !ctx.leftClosed) { ctx.leftClosed = true; panels.closeLeft(); } // make room for intel
 

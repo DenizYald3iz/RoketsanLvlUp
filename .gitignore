@@ -7,3 +7,4 @@ outputs/
 .pytest_cache/
 .idea/
 .vscode/
+debug.md

@@ -21,5 +21,6 @@ export function createLayout(map) {
     const c = $('#logbox').classList.toggle('closed');
     $('#toggle-log').textContent = c ? '▴' : '▾';
   };
+  $('#big-log').onclick = () => $('#logbox').classList.toggle('big');
   return { closeLeft: () => left(true), openLeft: () => left(false) };
 }

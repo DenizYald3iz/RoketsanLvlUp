@@ -34,12 +34,14 @@ def load(image_id: str) -> dict | None:
 
 
 def _compact(t: dict) -> dict:
+    """Trace event for the UI log — full text (the log shows a one-liner, click expands)."""
     c = {"kind": t["kind"], "stage": t["stage"]}
     if t["kind"] == "llm":
-        c["text"] = (t.get("text") or "")[:220]
-        c["calls"] = [{"name": x["name"], "args": json.dumps(x["args"], ensure_ascii=False)[:120]} for x in t.get("tool_calls", [])]
+        c["text"] = t.get("text") or ""
+        c["calls"] = [{"name": x["name"], "args": json.dumps(x["args"], ensure_ascii=False)} for x in t.get("tool_calls", [])]
     elif t["kind"] == "tool":
-        c.update(source=t.get("source"), name=t.get("name"), result=str(t.get("result", ""))[:220])
+        c.update(source=t.get("source"), name=t.get("name"), args=json.dumps(t.get("args") or {}, ensure_ascii=False),
+                 result=str(t.get("result", "")))
     else:
         c.update(status=t.get("status"), missing=t.get("missing"))
     return c
@@ -80,6 +82,60 @@ def ui_payload(image_id: str, t: dict) -> dict | None:
         return {"report": {"report_id": rid, "text": rep.get("text"), "source": rep.get("source"),
                            "time": rep.get("time"), "verdict": chk.get("verdict"), "related": chk.get("related", [])}}
     return None
+
+
+def _content(m) -> str:
+    if isinstance(m.content, str):
+        return m.content
+    parts = []
+    for p in m.content:
+        parts.append(p.get("text", "") if p.get("type") == "text" else f"[{p.get('type')}: görüntü eklendi]")
+    return "\n".join(parts)
+
+
+def _fence(text: str, lang: str = "") -> str:
+    try:
+        text = json.dumps(json.loads(text), ensure_ascii=False, indent=1)
+        lang = "json"
+    except (TypeError, ValueError):
+        pass
+    return f"```{lang}\n{text}\n```"
+
+
+def write_debug(state: dict, secs: float, n_llm: int) -> Path:
+    """Full LLM conversation of the last run → DEBUG_MD (default: <repo>/debug.md), overwritten each run."""
+    path = Path(os.getenv("DEBUG_MD", ROOT / "debug.md"))
+    ev = state.get("evidence", {})
+    out = [f"# Debug · {state.get('image_id')} · {time.strftime('%Y-%m-%d %H:%M:%S')}",
+           f"- süre: {secs:.0f}s · LLM çağrısı: {n_llm} · fast_stages: {', '.join(sorted(FAST_STAGES)) or '-'}",
+           f"- uyarılar: {len((ev.get('assessment') or {}).get('alerts', []))}", "",
+           "## Trace (zaman çizelgesi)"]
+    tr = state.get("trace", [])
+    t0 = tr[0]["ts"] if tr else 0
+    for t in tr:
+        head = f"- `{t['ts'] - t0:6.1f}s` **{t['stage']}**"
+        if t["kind"] == "llm":
+            calls = ", ".join(f"{c['name']}({json.dumps(c['args'], ensure_ascii=False)})" for c in t.get("tool_calls", []))
+            out.append(f"{head} LLM → {calls or '(metin)'}")
+        elif t["kind"] == "tool":
+            out.append(f"{head} tool[{t.get('source')}] `{t.get('name')}`")
+        else:
+            out.append(f"{head} GATE **{t.get('status')}** {t.get('missing') or ''}")
+    out += ["", "## Konuşma geçmişi (LLM'in gördüğü her şey)"]
+    for i, m in enumerate(state.get("messages", [])):
+        kind = type(m).__name__
+        out.append(f"\n### {i:02d} · {kind}" + (f" · {m.name}" if getattr(m, "name", None) else ""))
+        reasoning = (getattr(m, "additional_kwargs", {}) or {}).get("reasoning_content")
+        if reasoning:
+            out += ["<details><summary>reasoning</summary>\n", reasoning, "\n</details>\n"]
+        body = _content(m)
+        if body:
+            out.append(_fence(body) if kind == "ToolMessage" else body)
+        for c in getattr(m, "tool_calls", None) or []:
+            out.append(f"- **tool_call** `{c['name']}` {json.dumps(c['args'], ensure_ascii=False)}")
+    out += ["", "## Nihai değerlendirme", _fence(json.dumps(ev.get("assessment"), ensure_ascii=False))]
+    path.write_text("\n".join(out), encoding="utf-8")
+    return path
 
 
 def _line(obj: dict) -> str:
@@ -124,5 +180,10 @@ def stream(image_id: str):
     OUT.mkdir(exist_ok=True)
     (OUT / f"{image_id}.json").write_text(json.dumps({k: state.get(k) for k in ("image_id", "evidence", "trace")},
                                                      ensure_ascii=False, indent=1, default=str))
-    yield _line({"type": "done", "secs": round(time.time() - t0), "llm_calls": n,
+    secs = time.time() - t0
+    try:
+        dbg = str(write_debug(state, secs, n))
+    except Exception as e:  # debug file must never break the run
+        dbg = f"debug.md yazılamadı: {e}"
+    yield _line({"type": "done", "secs": round(secs), "llm_calls": n, "debug": dbg,
                  "agent": {"image_id": image_id, **trim(state.get("evidence", {}))}})

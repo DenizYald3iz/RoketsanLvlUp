@@ -3,6 +3,7 @@ import { log } from './panels.js';
 
 const STAGES = ['LOCATE', 'TRACKS', 'MOTION', 'REPORTS', 'ASSESS'];
 const TR = { LOCATE: 'KONUM', TRACKS: 'İZ EŞLEME', MOTION: 'HAREKET', REPORTS: 'RAPORLAR', ASSESS: 'KARAR' };
+const pretty = (s) => { try { return JSON.stringify(JSON.parse(s), null, 1); } catch { return s; } };
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 export function createBrain(root) {
@@ -23,12 +24,14 @@ export function createBrain(root) {
       const c = chip(ev.stage);
       if (c && !c.classList.contains('done')) c.classList.add('active');
       const tag = `<span class="stg">[${ev.t}s ${ev.stage}]</span>`;
+      const short = (x, n = 160) => esc(x.length > n ? x.slice(0, n) + '…' : x);
       if (ev.kind === 'llm') {
-        const calls = ev.calls.map((x) => `${x.name}(${esc(x.args)})`).join(', ');
-        if (calls) log(`${tag} GLM › <b>${esc(calls)}</b>`, 'glm');
-        if (ev.text) log(`${tag} GLM: ${esc(ev.text)}`, 'glm dim');
+        const calls = ev.calls.map((x) => `${x.name}(${x.args})`).join(', ');
+        if (calls) log(`${tag} GLM › <b>${short(calls)}</b>`, 'glm', ev.calls.map((x) => `${x.name}(${pretty(x.args)})`).join('\n\n'));
+        if (ev.text) log(`${tag} GLM: ${short(ev.text)}`, 'glm dim', ev.text);
       } else if (ev.kind === 'tool') {
-        log(`${tag} ${ev.source === 'auto' ? '⚙ auto' : '⚙'} ${ev.name} ⇒ ${esc(ev.result)}`, 'tool');
+        log(`${tag} ${ev.source === 'auto' ? '⚙ auto' : '⚙'} ${ev.name} ⇒ ${short(ev.result, 120)}`, 'tool',
+          `ARGS\n${pretty(ev.args)}\n\nSONUÇ\n${pretty(ev.result)}`);
       } else {
         log(`${tag} GATE ${ev.status}${ev.missing?.length ? ' · eksik: ' + esc(ev.missing) : ''}`, ev.status === 'pass' ? 'ok' : 'warn');
         if (c && ev.status !== 'nudge') { c.classList.remove('active'); c.classList.add('done', ev.status); }

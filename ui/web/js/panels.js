@@ -50,14 +50,22 @@ export function markDetectionRow(key, level) {
   if (td) td.innerHTML = `<span class="lv lv-${level}">${level.toUpperCase()}</span>`;
 }
 
-export function log(msg, cls = '') {
+// detail (optional, plain text): full content shown when the line is clicked.
+export function log(msg, cls = '', detail = '') {
   const el = document.createElement('div');
-  el.className = `ln ${cls}`;
+  el.className = `ln ${cls}${detail ? ' has-detail' : ''}`;
   const t = new Date().toLocaleTimeString('tr-TR');
-  el.innerHTML = `<span class="ts">${t}</span> ${msg}`;
+  el.innerHTML = `<div class="l1"><span class="ts">${t}</span> ${msg}</div>`;
+  if (detail) {
+    const pre = document.createElement('pre');
+    pre.textContent = detail;
+    el.appendChild(pre);
+    el.querySelector('.l1').onclick = () => el.classList.toggle('open');
+  }
   const box = $('#log');
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
   box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
+  if (atBottom) box.scrollTop = box.scrollHeight; // don't yank the view while someone is reading
 }
 
 export function setStats({ frames, vehicles, alerts }) {
