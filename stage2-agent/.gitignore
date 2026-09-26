@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+crop_*.jpg
+.env
+
+# Yerel veri kopyasi git'e girmez: ayni dosyalar depoda zaten
+# data/stage2/ altinda commit'li. config.py ikisini de bulur.
+data/
+gorev_tanimi.pdf   # depoda zaten: data/stage2/ ve docs/
