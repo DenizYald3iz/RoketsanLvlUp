@@ -6,3 +6,6 @@ numpy
 pillow
 python-dotenv
 pytest
+fastapi
+uvicorn
+python-multipart
