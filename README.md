@@ -173,7 +173,7 @@ Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO;
 | TRACKS | `list_tracks_near(radius_m=1000)` | Çekim anında çerçeve dışında kalan yakın track'ler | `nearby_tracks` | ✅ |
 | MOTION | `get_track_kinematics(track_id)` | 2 saatlik kayıttan hız, yön, üsse mesafe, yaklaşma hızı, **ETA**, durma, dolaşma | `kinematics[track_id]` | ✅ |
 | MOTION | `get_track_points(track_id, last_n=25)` | Ham noktalar (time, lat, lon, base_dist_m) | – | ✅ |
-| REPORTS | `find_reports(radius_m=1500, window_min=120)` | Konum (koordinat veya bölge adı) ve saate göre ilgili raporlar | `reports` | 🟡 |
+| REPORTS | `find_reports(radius_m=300, window_min=120)` | Çekimden önceki `window_min` dk içinde, koordinatı çerçeveye `radius_m` yakın ya da bölge adı görüntünün bölgesi olan raporlar; konumsuz duyurular ayrı `general` listesinde | `reports` | ✅ |
 | REPORTS | `compare_report(report_id)` | Rapor iddiası ↔ bizim bulgular: `consistent / contradicts / unverifiable / irrelevant` | `report_checks[report_id]` | 🟡 |
 | ASSESS | `submit_assessment(alerts, summary, ignored_reports)` | Nihai yapılandırılmış çıktı (Pydantic `Alert` şeması) | `assessment` | ✅ |
 

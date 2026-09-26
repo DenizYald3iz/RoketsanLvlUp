@@ -16,6 +16,18 @@ def pixel_to_latlon(x: float, y: float, meta: dict) -> tuple[float, float]:
     return lat, lon
 
 
+def frame_center(meta: dict) -> tuple[float, float]:
+    return pixel_to_latlon(meta["width_px"] / 2, meta["height_px"] / 2, meta)
+
+
+def dist_to_frame_m(lat: float, lon: float, meta: dict) -> float:
+    """Metres from a point to the image's ground rectangle (0 if inside)."""
+    c = meta["corner_coordinates"]
+    lat_lo, lat_hi = sorted((c["bottom_left"][0], c["top_left"][0]))
+    lon_lo, lon_hi = sorted((c["top_left"][1], c["top_right"][1]))
+    return haversine_m(lat, lon, min(max(lat, lat_lo), lat_hi), min(max(lon, lon_lo), lon_hi))
+
+
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp, dl = p2 - p1, math.radians(lon2 - lon1)

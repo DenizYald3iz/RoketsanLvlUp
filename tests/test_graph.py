@@ -33,11 +33,15 @@ def test_tool_calling_llm_passes_gates_without_fallback():
     tids = [m["track_id"] for m in run_tool("match_tracks", {}, stage="TRACKS", image_id=IMG, evidence=ev).result["matches"]]
     assert tids
     kin = AIMessage("", tool_calls=[{"name": "get_track_kinematics", "args": {"track_id": t}, "id": f"k{t}"} for t in tids])
+    rids = [r["report_id"] for r in run_tool("find_reports", {}, stage="REPORTS", image_id=IMG, evidence={})
+            .result["reports"]]
+    compare_all = AIMessage("", tool_calls=[{"name": "compare_report", "args": {"report_id": r}, "id": f"cc{r}"}
+                                            for r in rids])
     script = [
         call("get_image_info"), done(),                                           # LOCATE
         call("match_tracks"), done(),                                             # TRACKS
         kin, done(),                                                              # MOTION: every matched track
-        call("find_reports"), done(),                                             # REPORTS: stub finds none
+        call("find_reports"), compare_all, done(),                                # REPORTS: compare every report
         call("submit_assessment", {"alerts": [], "summary": "yok"}), done(),      # ASSESS
     ]
     llm = ScriptedLLM(script)
