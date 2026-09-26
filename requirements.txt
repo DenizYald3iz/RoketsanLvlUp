@@ -1,0 +1,8 @@
+langgraph>=1.2
+langchain-openai>=1.6
+pydantic>=2
+pandas
+numpy
+pillow
+python-dotenv
+pytest
