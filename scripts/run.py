@@ -8,7 +8,7 @@ import argparse
 import json
 import random
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from s2agent.budget import assert_budget
@@ -88,8 +88,8 @@ def main() -> None:
             except Exception as e:  # keep the batch going
                 return f"{i}  ERROR {type(e).__name__}: {e}"
         with ThreadPoolExecutor(a.workers) as ex:
-            for line in ex.map(one, ids):
-                print(line, flush=True)
+            for f in as_completed([ex.submit(one, i) for i in ids]):
+                print(f.result(), flush=True)
         print(f"spend after: {assert_budget():.4f} USD")
     else:
         state = run_live(ids[0] if ids else get_data().image_ids()[0], graph)
