@@ -133,7 +133,7 @@ Gate durumları: `pass` (LLM tamamladı), `nudge` (eksik var, LLM uyarıldı), `
    agent ──tool_calls──▶ tools ──▶ agent ... ──(tool çağırmadı / tur bitti)──▶ gate
                                                                              │
                      ┌───────────────────────────────────────────────────────┤
-                     │ eksik yok            → sonraki aşama (temiz sohbet)    │
+                     │ eksik yok            → sonraki aşama (aynı sohbet)     │
                      │ eksik + tur var      → "eksik: …" mesajı → agent       │
                      │ eksik + tur bitti    → fallback tool'ları kod çağırır  │
                      └────────────────────────────────────────────────────────┘
@@ -144,7 +144,7 @@ Temel kurallar:
 - **Geçişi kod kontrol eder:** Her aşamanın `requires`/`check` koşulu `state.evidence` üzerinde kontrol edilir. LLM'in "bitti" demesi aşamayı geçirmeye yetmez.
 - **Evidence:** Tool sonuçları `state.evidence[<writes>]` içine yazılır. Sonraki aşamalar ve tool'lar veriyi buradan okur.
   LLM'e sadece kısaltılmış bir kopya gider; yani LLM sayıları kendisi taşımaz ve uyduramaz.
-- **Her aşama temiz bir sohbetle başlar.** Önceki aşamaların sonuçları system prompt'ta özet olarak verilir, bu da context'i ve maliyeti düşük tutar.
+- **Tek sohbet, tam history.** Aşamalar arası sohbet silinmez; her aşama "Aşama X: hedef" mesajıyla başlar ve LLM önceki tüm tool sonuçlarını ve kendi notlarını görür. Fallback'in çalıştırdığı tool sonuçları da sohbete mesaj olarak eklenir.
 - **Fallback:** Tur limiti (`MAX_TURNS_PER_STAGE`, varsayılan 4) dolarsa aşamanın zorunlu tool'larını kod çağırır. Agent hiçbir zaman takılmaz ve sonsuz döngüde bütçe yakılmaz.
 - **Trace:** Her LLM cevabı, tool çağrısı ve gate kararı `state.trace`'e kaydedilir (demo ve debug için).
 - LOCATE aşamasında drone görüntüsü modele ilk mesajla birlikte gönderilir (`attach_image=True`).
@@ -169,8 +169,8 @@ Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO;
 | LOCATE | `get_image_info()` | **İlk çağrı.** Genel bilgi (saat, kapsam, bölge, üsse mesafe) + araç tespitleri (tip, lat/lon) | `image_info`, `detections` | ✅ |
 | LOCATE | `get_detections(min_conf=0.3)` | Detector'dan tespitleri alır, çakışan kutuları birleştirir (NMS), kutu merkezlerini lat/lon'a çevirir, `{det_id,label,conf,cx,cy,w,h,lat,lon}` | `detections` | ✅ |
 | LOCATE, MOTION | `view_image(crop_x,crop_y,crop_w,crop_h)` | Görüntüyü (veya bir kırpımını) modele gösterir | – | ✅ |
-| TRACKS | `match_tracks(max_dist_m=15)` | `time == capture_time` noktalarıyla en yakın eşleşme + eşleşmeyenler | `matches` | 🟡 |
-| TRACKS | `list_tracks_near(radius_m=1000)` | Çekim anında çerçeve dışında kalan yakın track'ler | `nearby_tracks` | 🟡 |
+| TRACKS | `match_tracks(max_dist_m=20)` | `time == capture_time` noktalarıyla en yakın 1-1 eşleşme + eşleşmeyenler | `matches` | ✅ |
+| TRACKS | `list_tracks_near(radius_m=1000)` | Çekim anında çerçeve dışında kalan yakın track'ler | `nearby_tracks` | ✅ |
 | MOTION | `get_track_kinematics(track_id)` | 2 saatlik kayıttan hız, yön, üsse mesafe, yaklaşma hızı, **ETA**, durma, dolaşma | `kinematics[track_id]` | 🟡 |
 | MOTION | `get_track_points(track_id, last_n=25)` | Ham noktalar (time, lat, lon, base_dist_m) | – | 🟡 |
 | REPORTS | `find_reports(radius_m=1500, window_min=120)` | Konum (koordinat veya bölge adı) ve saate göre ilgili raporlar | `reports` | 🟡 |

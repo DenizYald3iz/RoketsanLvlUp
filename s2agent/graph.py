@@ -1,23 +1,23 @@
 """LangGraph wiring:  agent ⇄ tools  →  gate  → (next stage | nudge | fallback)  → … → END
 
-- agent: LLM with ONLY the current stage's tools bound.
+- agent: LLM with ONLY the current stage's tools bound; sees the full history of all stages.
 - tools: executes tool calls through the registry; results land in state.evidence.
-- gate:  code (not the LLM) checks the stage's requirements. Pass → next stage with a fresh
-         conversation; missing → nudge the LLM; out of turns → run the stage's fallback calls.
+- gate:  code (not the LLM) checks the stage's requirements. Pass → next stage (same
+         conversation); missing → nudge the LLM; out of turns → run the stage's fallback calls.
 """
 import operator
 import time
 from typing import Annotated, Any, TypedDict
 
-from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import REMOVE_ALL_MESSAGES, add_messages
+from langgraph.graph.message import add_messages
 
 from . import tools as _tools  # noqa: F401 — registers all @stage_tool functions
 from .config import CFG
 from .data import get_data
 from .geo import image_data_url
-from .prompts import NUDGE, SYSTEM, TASK, UPLOAD, evidence_digest
+from .prompts import AUTO_RESULTS, NUDGE, STAGE_START, SYSTEM, UPLOAD
 from .registry import run_tool, tools_for_stage
 from .stages import STAGES, Stage
 
@@ -30,7 +30,8 @@ class AgentState(TypedDict, total=False):
     image_id: str
     stage_idx: int
     turns: int  # LLM calls in the current stage
-    messages: Annotated[list, add_messages]  # current stage's conversation only
+    messages: Annotated[list, add_messages]  # one conversation across all stages
+    intro_idx: int  # last stage whose start message was sent
     evidence: Annotated[dict, merge_dict]  # everything tools produced, keyed by ToolSpec.writes
     trace: Annotated[list, operator.add]  # full history for the demo / debugging
     done: bool
@@ -46,23 +47,23 @@ def build_graph(llm, stages: list[Stage] = STAGES, max_turns: int = CFG.max_turn
 
     # ---------------- nodes ----------------
     def agent(s: AgentState) -> dict:
-        st, ev = stage_of(s), s.get("evidence", {})
+        st, idx = stage_of(s), s.get("stage_idx", 0)
         new_msgs: list = []
-        if not s.get("messages"):  # first turn of this stage → fresh, stage-scoped prompt
-            sys = SYSTEM.format(stage=st.name, idx=s.get("stage_idx", 0) + 1, n=len(stages),
-                                goal=st.goal, evidence=evidence_digest(ev))
-            task = TASK.format(image_id=s["image_id"], stage=st.name)
-            content: Any = task
+        if s.get("intro_idx", -1) != idx:  # stage start → announce it; history of earlier stages is kept
+            if idx == 0:
+                new_msgs.append(SystemMessage(SYSTEM.format(n=len(stages), stages=" → ".join(x.name for x in stages))))
+            text = STAGE_START.format(idx=idx + 1, n=len(stages), stage=st.name, goal=st.goal)
             if st.attach_image:
-                task = UPLOAD.format(image_id=s["image_id"])
                 url = image_data_url(get_data().image_path(s["image_id"]), CFG.image_max_side)
-                content = [{"type": "text", "text": task}, {"type": "image_url", "image_url": {"url": url}}]
-            new_msgs = [SystemMessage(sys), HumanMessage(content)]
+                text += "\n\n" + UPLOAD.format(image_id=s["image_id"])
+                new_msgs.append(HumanMessage([{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": url}}]))
+            else:
+                new_msgs.append(HumanMessage(text))
         specs = tools_for_stage(st.name)
         bound = llm.bind_tools([t.lc_tool for t in specs]) if specs else llm
         ai: AIMessage = bound.invoke(list(s.get("messages", [])) + new_msgs)
         calls = [{"name": c["name"], "args": c["args"]} for c in ai.tool_calls]
-        return {"messages": new_msgs + [ai], "turns": s.get("turns", 0) + 1,
+        return {"messages": new_msgs + [ai], "turns": s.get("turns", 0) + 1, "intro_idx": idx,
                 "trace": [_t("llm", st.name, text=(ai.content or "")[:2000], tool_calls=calls)]}
 
     def _execute(s: AgentState, calls: list[dict], source: str) -> dict:
@@ -102,9 +103,12 @@ def build_graph(llm, stages: list[Stage] = STAGES, max_turns: int = CFG.max_turn
             fb = _execute({**s, "evidence": ev}, [{"name": n, "args": a} for n, a in calls], "auto")
             ev, upd, trace = merge_dict(ev, fb["evidence"]), merge_dict(upd, fb["evidence"]), trace + fb["trace"]
             missing = st.missing(ev)
+        auto = [t for t in trace if t["kind"] == "tool"]
+        msgs = [HumanMessage(AUTO_RESULTS.format(stage=st.name, results="\n".join(
+            f"- {t['name']}({t['args']}) → {t['result']}" for t in auto)))] if auto else []
         status = "pass" if not trace else ("fallback" if not missing else "forced")
         return {"evidence": upd, "stage_idx": idx + 1, "turns": 0, "done": idx + 1 >= len(stages),
-                "messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES)],
+                "messages": msgs,
                 "trace": trace + [_t("gate", st.name, status=status, missing=missing)]}
 
     # ---------------- routing ----------------

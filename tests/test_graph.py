@@ -27,13 +27,18 @@ def test_lazy_llm_still_finishes_via_fallback():
 
 
 def test_tool_calling_llm_passes_gates_without_fallback():
-    done = AIMessage("aşama tamam")
+    def done():
+        return AIMessage("aşama tamam")
+    ev = run_tool("get_image_info", {}, stage="LOCATE", image_id=IMG, evidence={}).evidence_update
+    tids = [m["track_id"] for m in run_tool("match_tracks", {}, stage="TRACKS", image_id=IMG, evidence=ev).result["matches"]]
+    assert tids
+    kin = AIMessage("", tool_calls=[{"name": "get_track_kinematics", "args": {"track_id": t}, "id": f"k{t}"} for t in tids])
     script = [
-        call("get_image_info"), done,                                             # LOCATE
-        call("match_tracks"), done,                                               # TRACKS
-        done,                                                                     # MOTION: no matches → gate passes
-        call("find_reports"), done,                                               # REPORTS: stub finds none
-        call("submit_assessment", {"alerts": [], "summary": "yok"}), done,        # ASSESS
+        call("get_image_info"), done(),                                           # LOCATE
+        call("match_tracks"), done(),                                             # TRACKS
+        kin, done(),                                                              # MOTION: every matched track
+        call("find_reports"), done(),                                             # REPORTS: stub finds none
+        call("submit_assessment", {"alerts": [], "summary": "yok"}), done(),      # ASSESS
     ]
     llm = ScriptedLLM(script)
     out = run_image(IMG, graph=build_graph(llm, max_turns=4))
@@ -63,3 +68,11 @@ def test_locate_passes_after_single_get_image_info_call():
     locate = [t for t in out["trace"] if t["stage"] == "LOCATE"]
     assert [t["name"] for t in locate if t["kind"] == "tool"] == ["get_image_info"]
     assert locate[-1]["status"] == "pass"
+
+
+def test_later_stages_see_full_history():
+    llm = ScriptedLLM([call("get_image_info"), AIMessage("LOCATE notu: D03 şüpheli")])
+    run_image(IMG, graph=build_graph(llm, max_turns=2))
+    tracks_call = llm.calls[2]  # first TRACKS turn
+    text = " ".join(str(m.content) for m in tracks_call)
+    assert "LOCATE notu: D03 şüpheli" in text and '"det_id": "D00"' in text and "Aşama 2/5: TRACKS" in text
