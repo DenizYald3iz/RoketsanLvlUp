@@ -58,13 +58,20 @@
     <section class="center">
       <div id="map"></div>
       <div id="brain" class="brain"></div>
+      <div id="inspect" class="inspect"></div>
+      <div id="intel" class="intel"></div>
       <div class="hud tl">MERKEZ ÜS · 39.92184N 32.85306E</div>
       <div class="hud tr"><select id="basemap"><option value="sat">UYDU</option><option value="dark">KARANLIK</option></select></div>
-      <div class="hud bl legend">
+      <div class="hud legend">
         <span style="--c:#22e6ff">OTOMOBİL</span><span style="--c:#b388ff">PANELVAN</span>
         <span style="--c:#ffb020">KAMYON</span><span style="--c:#ff4d6d">OTOBÜS</span>
       </div>
-      <div id="log" class="log"></div>
+      <div id="logbox" class="logbox">
+        <div class="loghead"><span>GLM · SİSTEM AKIŞI</span><button id="toggle-log" title="aç/kapat">▾</button></div>
+        <div id="log" class="log"></div>
+      </div>
+      <button id="toggle-left" class="edge el" title="sol panel">◀</button>
+      <button id="toggle-right" class="edge er" title="sağ panel">▶</button>
     </section>
 
     <aside class="right">

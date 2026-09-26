@@ -28,7 +28,7 @@ export function setZoneLevel(name, level) {
   if (el && level) el.dataset.level = level;
 }
 
-export function renderDetections(res, onHover) {
+export function renderDetections(res, onHover, onClick) {
   const tb = $('#dets tbody');
   tb.innerHTML = '';
   for (const d of res.detections) {
@@ -39,6 +39,7 @@ export function renderDetections(res, onHover) {
       <td>${prettyZone(d.zone)}<br><small>${d.base_dist_m} m · ${d.direction}</small></td><td class="lvl"></td>`;
     tr.onmouseenter = () => onHover(d.key, true);
     tr.onmouseleave = () => onHover(d.key, false);
+    tr.onclick = () => onClick?.(d.key);
     tb.appendChild(tr);
   }
   $('#det-title').textContent = `TESPİTLER · ${res.image_id} · ${res.capture_time}`;

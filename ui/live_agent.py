@@ -1,5 +1,6 @@
 """Live GLM agent run for the UI: streams trace events as NDJSON, saves outputs/<id>.json at the end."""
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -9,6 +10,8 @@ from s2agent.config import CFG, ROOT
 OUT = ROOT / "outputs"
 _graph = None
 _lock = threading.Semaphore(2)  # gateway allows 4 concurrent requests team-wide; stay polite
+# stages that skip the LLM's summary turn once their gate is satisfied (LOCATE kept: it may call view_image)
+FAST_STAGES = frozenset(x for x in os.getenv("FAST_STAGES", "TRACKS,MOTION,REPORTS,ASSESS").split(",") if x)
 
 
 def graph():
@@ -16,7 +19,7 @@ def graph():
     if _graph is None:
         from s2agent.graph import build_graph
         from s2agent.llm import make_llm
-        _graph = build_graph(make_llm())
+        _graph = build_graph(make_llm(), fast_stages=FAST_STAGES)
     return _graph
 
 
@@ -40,6 +43,43 @@ def _compact(t: dict) -> dict:
     else:
         c.update(status=t.get("status"), missing=t.get("missing"))
     return c
+
+
+def _parse(text: str) -> dict:
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError):
+        return {}
+
+
+def ui_payload(image_id: str, t: dict) -> dict | None:
+    """Visual payload for a tool event, so the UI can show what the tool is doing right now."""
+    from s2agent.data import get_data
+
+    from . import pipeline
+
+    name, args = t.get("name"), t.get("args") or {}
+    d = get_data()
+    if name in ("get_image_info", "get_detections"):
+        return {"locate": pipeline.analyze(d.image_path(image_id), image_id,
+                                           float(args.get("min_conf", pipeline.MIN_CONF)))}
+    if name == "view_image":
+        keys = ("crop_x", "crop_y", "crop_w", "crop_h")
+        return {"view": {"crop": [args[k] for k in keys] if all(args.get(k) is not None for k in keys) else None}}
+    if name == "get_track_kinematics":
+        tid = args.get("track_id")
+        pts = d.tracks[d.tracks.track_id == tid].sort_values("time")
+        return {"track": {"track_id": tid, "points": pts[["lon", "lat"]].values.round(6).tolist(),
+                          "times": pts.time.tolist(), "kin": _parse(t.get("result"))}}
+    if name == "match_tracks":
+        return {"matches": _parse(t.get("result")).get("matches", [])}
+    if name == "compare_report":
+        rid = args.get("report_id")
+        rep = next((r for r in d.reports if r["report_id"] == rid), {})
+        chk = _parse(t.get("result"))
+        return {"report": {"report_id": rid, "text": rep.get("text"), "source": rep.get("source"),
+                           "time": rep.get("time"), "verdict": chk.get("verdict"), "related": chk.get("related", [])}}
+    return None
 
 
 def _line(obj: dict) -> str:
@@ -70,7 +110,13 @@ def stream(image_id: str):
                 for upd in chunk.values():
                     for t in (upd or {}).get("trace", []):
                         n += t["kind"] == "llm"
-                        yield _line({"type": "trace", "t": round(time.time() - t0, 1), **_compact(t)})
+                        ev = {"type": "trace", "t": round(time.time() - t0, 1), **_compact(t)}
+                        if t["kind"] == "tool":
+                            try:
+                                ev["ui"] = ui_payload(image_id, t)
+                            except Exception as e:  # visuals must never break the run
+                                ev["ui_error"] = f"{type(e).__name__}: {e}"
+                        yield _line(ev)
         except Exception as e:
             yield _line({"type": "error", "msg": f"{type(e).__name__}: {e}"})
             return

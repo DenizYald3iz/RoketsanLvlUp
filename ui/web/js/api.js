@@ -43,3 +43,4 @@ export async function runAgent(imageId, onEvent) {
   }
   return final;
 }
+export const getTrack = (trackId) => fetch(`/api/tracks/${trackId}`).then(json);

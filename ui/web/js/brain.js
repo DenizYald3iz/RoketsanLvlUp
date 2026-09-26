@@ -7,7 +7,7 @@ const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 
 export function createBrain(root) {
   root.innerHTML = `<span class="bt">GLM AJAN</span>` +
-    STAGES.map((s) => `<span class="st" data-s="${s}">${TR[s]}</span>`).join('<i>›</i>') + `<span class="bs"></span>`;
+    STAGES.map((s) => `<span class="st" data-s="${s}">${TR[s]}</span>`).join('<i>›</i>') + `<span class="bs">BEKLEMEDE</span>`;
   const chip = (s) => root.querySelector(`[data-s="${s}"]`);
   const status = (t) => (root.querySelector('.bs').textContent = t);
 
@@ -34,6 +34,6 @@ export function createBrain(root) {
         if (c && ev.status !== 'nudge') { c.classList.remove('active'); c.classList.add('done', ev.status); }
       }
     },
-    finish(msg) { status(msg); setTimeout(() => root.classList.remove('on'), 4000); },
+    finish(msg) { status(msg); root.classList.remove('on'); },
   };
 }

@@ -93,3 +93,11 @@ def analyze(file_path: Path, image_id: str, min_conf: float = MIN_CONF) -> dict:
             "size": [meta["width_px"], meta["height_px"]], "footprint": footprint(meta),
             "center": [clon, clat], "zone": assign_zone(clat, clon, lay),
             "base_dist_m": round(haversine_m(clat, clon, b["lat"], b["lon"])), "detections": dets}
+
+
+def track(track_id: str) -> dict | None:
+    t = get_data().tracks
+    pts = t[t.track_id == track_id].sort_values("time")
+    if pts.empty:
+        return None
+    return {"track_id": track_id, "points": pts[["lon", "lat"]].values.round(6).tolist(), "times": pts.time.tolist()}

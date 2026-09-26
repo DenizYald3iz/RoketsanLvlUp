@@ -41,7 +41,10 @@ def _t(kind: str, stage: str, **kw) -> dict:
     return {"ts": round(time.time(), 2), "kind": kind, "stage": stage, **kw}
 
 
-def build_graph(llm, stages: list[Stage] = STAGES, max_turns: int = CFG.max_turns_per_stage):
+def build_graph(llm, stages: list[Stage] = STAGES, max_turns: int = CFG.max_turns_per_stage,
+                fast_stages: frozenset[str] = frozenset()):
+    """fast_stages (experimental): in these stages, go straight to the gate as soon as the tools
+    satisfy it — skips the LLM's stage-summary turn."""
     def stage_of(s: AgentState) -> Stage:
         return stages[s.get("stage_idx", 0)]
 
@@ -116,6 +119,9 @@ def build_graph(llm, stages: list[Stage] = STAGES, max_turns: int = CFG.max_turn
         return "tools" if s["messages"][-1].tool_calls else "gate"
 
     def after_tools(s: AgentState) -> str:
+        st = stage_of(s)
+        if st.name in fast_stages and not st.missing(s.get("evidence", {})):
+            return "gate"
         return "gate" if s.get("turns", 0) >= max_turns else "agent"
 
     def after_gate(s: AgentState) -> str:

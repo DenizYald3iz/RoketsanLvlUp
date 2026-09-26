@@ -5,7 +5,7 @@ export function createImageView(root) {
   root.innerHTML = `<div class="iv-empty">GÖRÜNTÜ BEKLENİYOR</div><canvas></canvas><div class="scan"></div>`;
   const canvas = root.querySelector('canvas');
   const ctx = canvas.getContext('2d');
-  let img = null, boxes = [], size = [1, 1], hl = null;
+  let img = null, boxes = [], size = [1, 1], hl = null, crop = null;
 
   function draw() {
     if (!img) return;
@@ -31,6 +31,12 @@ export function createImageView(root) {
       ctx.fillStyle = c; ctx.fillRect(x, y - 14, tw, 14);
       ctx.fillStyle = '#021016'; ctx.fillText(tag, x + 4, y - 4);
     }
+    if (crop) {
+      const [x, y, cw, ch] = crop;
+      ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.strokeStyle = '#ffb020';
+      ctx.strokeRect(x * sx, y * sy, cw * sx, ch * sy); ctx.setLineDash([]);
+      ctx.fillStyle = '#ffb020'; ctx.font = '700 10px "JetBrains Mono"'; ctx.fillText('GLM ODAK', x * sx + 4, y * sy + 12);
+    }
   }
 
   function corners(x, y, w, h, k) {
@@ -49,7 +55,7 @@ export function createImageView(root) {
       img = new Image();
       img.src = url;
       await img.decode();
-      boxes = []; hl = null;
+      boxes = []; hl = null; crop = null;
       root.classList.add('has-img');
       draw();
     },
@@ -57,5 +63,7 @@ export function createImageView(root) {
     setSize(s) { size = s; },
     addBox(d) { boxes.push(d); draw(); },
     highlight(key) { hl = key; draw(); },
+    setCrop(c) { crop = c; draw(); },
+    image: () => img,
   };
 }

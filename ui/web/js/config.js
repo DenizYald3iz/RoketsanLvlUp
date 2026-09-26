@@ -8,6 +8,7 @@ export const CFG = {
   flyMs: 1600,
   basemap: 'sat',              // 'sat' | 'dark'
   minConf: 0.3,
+  trackTailMin: 30,            // minutes of track history drawn on the map
 };
 
 export const LABELS = {

@@ -36,6 +36,14 @@ def get_image_file(image_id: str):
         raise HTTPException(404, image_id)
 
 
+@app.get("/api/tracks/{track_id}")
+def get_track(track_id: str):
+    t = pipeline.track(track_id)
+    if t is None:
+        raise HTTPException(404, track_id)
+    return t
+
+
 @app.get("/api/agent/{image_id}")
 def get_agent_output(image_id: str):
     """Saved GLM agent output (outputs/<id>.json), trimmed for the UI."""
