@@ -40,7 +40,7 @@ def test_tool_calling_llm_passes_gates_without_fallback():
     assert out["done"]
     assert not any(t["kind"] == "tool" and t["source"] == "auto" for t in out["trace"])
     assert all(t["status"] == "pass" for t in out["trace"] if t["kind"] == "gate")
-    assert out["evidence"]["detections"]["status"] == "not_implemented"
+    assert out["evidence"]["detections"]["count"] > 0
 
 
 def test_keyed_evidence_merges():
