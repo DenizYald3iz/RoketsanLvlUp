@@ -38,7 +38,7 @@ STAGES: list[Stage] = [
     Stage(
         "LOCATE",
         "Önce get_image_info çağır: görüntünün genel bilgisini VE tespit edilen araçları (tip + koordinat) birlikte "
-        "getirir. Sonuçları görüntüyle karşılaştır: sayı/tipler makul mü? type_uncertain ya da şüpheli tespit varsa "
+        "getirir. Sonuçları görüntüyle karşılaştır: sayı/tipler makul mü? Şüpheli tespit varsa "
         "view_image ile o bölgeye bak; gerekirse get_detections'ı farklı min_conf ile tekrar çağır. Sonra kısa özet yaz.",
         requires=["image_info", "detections"],
         fallback=lambda ev: [("get_image_info", {})],

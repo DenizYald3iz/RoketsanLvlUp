@@ -41,7 +41,7 @@ def test_http_backend_same_output(monkeypatch):
     assert via_http == _dets()
 
 
-def test_parse_none_and_alt_labels():
+def test_parse_none_and_multi_boxes():
     assert detector.parse_prediction_string("none").empty
     df = detector.parse_prediction_string("car 0.9 10 20 30 40 van 0.5 10 20 30 40")
     assert list(df.label) == ["car", "van"] and df.cx[0] == 25 and df.cy[0] == 40

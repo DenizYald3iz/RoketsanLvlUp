@@ -33,32 +33,23 @@ def _iou(a, b) -> float:
 
 @stage_tool("LOCATE", writes="detections")
 def get_detections(min_conf: float = 0.3, *, ctx: ToolContext) -> dict:
-    """Tespit modelinin bu görüntüdeki araçları (conf >= min_conf, çakışan kutular birleştirilmiş).
-    Her tespit: {det_id, label, conf, cx, cy, w, h, lat, lon, alt_labels, type_uncertain}.
-    alt_labels: aynı kutu için modelin verdiği diğer etiketler. type_uncertain=true ise tip güvenilir değil;
-    raporla tip karşılaştırırken dikkate al. Dönüş: {count, by_label, detections:[...]}."""
+    """Tespit modelinin bu görüntüdeki araçları (conf >= min_conf; aynı kutuya birden fazla etiket
+    düştüyse en yüksek conf'lu sınıf alınır). Her tespit: {det_id, label, conf, cx, cy, w, h, lat, lon}.
+    Dönüş: {count, by_label, detections:[...]}."""
     meta = ctx.data.meta.get(ctx.image_id)
     if meta is None:
         return {"error": f"image_meta'da yok: {ctx.image_id}"}
     df = get_detector().predict(ctx.image_id).sort_values("conf", ascending=False)
-    groups: list[list] = []  # greedy NMS; suppressed boxes become alternative labels
+    keep = []  # greedy NMS: highest-conf label wins for overlapping boxes
     for r in df.itertuples():
-        g = next((g for g in groups if _iou(g[0], r) >= 0.5), None)
-        g.append(r) if g else groups.append([r])
+        if all(_iou(k, r) < 0.5 for k in keep):
+            keep.append(r)
     dets = []
-    for g in groups:
-        r = g[0]
-        if r.conf < min_conf:
-            continue
-        alt = {}
-        for o in g[1:]:
-            if o.label != r.label and o.label not in alt:
-                alt[o.label] = round(o.conf, 3)
+    for r in (r for r in keep if r.conf >= min_conf):
         lat, lon = pixel_to_latlon(r.cx, r.cy, meta)
         dets.append({"det_id": f"D{len(dets):02d}", "label": r.label, "conf": round(r.conf, 3),
                      "cx": round(r.cx, 1), "cy": round(r.cy, 1), "w": r.w, "h": r.h,
-                     "lat": round(lat, 6), "lon": round(lon, 6), "alt_labels": alt,
-                     "type_uncertain": any(c >= 0.5 * r.conf for c in alt.values())})
+                     "lat": round(lat, 6), "lon": round(lon, 6)})
     by_label: dict[str, int] = {}
     for d in dets:
         by_label[d["label"]] = by_label.get(d["label"], 0) + 1

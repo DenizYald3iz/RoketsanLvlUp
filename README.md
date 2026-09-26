@@ -167,7 +167,7 @@ Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO;
 |---|---|---|---|---|
 | hepsi | `zone_info(lat, lon)` | En yakın bölge, üsse mesafe ve yön | – | ✅ |
 | LOCATE | `get_image_info()` | **İlk çağrı.** Genel bilgi (saat, kapsam, bölge, üsse mesafe) + araç tespitleri (tip, lat/lon) | `image_info`, `detections` | ✅ |
-| LOCATE | `get_detections(min_conf=0.3)` | Detector'dan tespitleri alır, çakışan kutuları birleştirir (NMS), kutu merkezlerini lat/lon'a çevirir, tip belirsizliğini işaretler. `{det_id,label,conf,cx,cy,w,h,lat,lon,alt_labels,type_uncertain}` | `detections` | ✅ |
+| LOCATE | `get_detections(min_conf=0.3)` | Detector'dan tespitleri alır, çakışan kutuları birleştirir (NMS), kutu merkezlerini lat/lon'a çevirir, `{det_id,label,conf,cx,cy,w,h,lat,lon}` | `detections` | ✅ |
 | LOCATE, MOTION | `view_image(crop_x,crop_y,crop_w,crop_h)` | Görüntüyü (veya bir kırpımını) modele gösterir | – | ✅ |
 | TRACKS | `match_tracks(max_dist_m=15)` | `time == capture_time` noktalarıyla en yakın eşleşme + eşleşmeyenler | `matches` | 🟡 |
 | TRACKS | `list_tracks_near(radius_m=1000)` | Çekim anında çerçeve dışında kalan yakın track'ler | `nearby_tracks` | 🟡 |
@@ -190,7 +190,6 @@ Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO;
 - Raporların bir kısmı hatalı veya ilgisiz. **Rapor tespitle çelişiyorsa tespit esas alınır.**
 - `pred_all_boxes.csv` çoğunlukla düşük conf'lu gürültü (medyan conf 0.02). **conf ≥ 0.3** ile görüntü başına ~7 kutu kalıyor
   ve çerçevedeki track'lerin %99'unun 20 m yakınında bir tespit oluyor (0.5 ile %96). Önerilen: `min_conf=0.3`, `max_dist_m=20`.
-- Düşük conf'ta araç tipi güvenilmez. Rapordaki tiple karşılaştırırken `type_uncertain` ve `alt_labels` alanlarına bak.
 
 ---
 
@@ -206,9 +205,8 @@ img_000002,none                                                 # hiç araç yok
 | `DETECTOR=csv` (varsayılan) | `PRED_FILE` = `data/stage2/pred_all_boxes_submission.csv` |
 | `DETECTOR=http` + `DETECTOR_URL=...` | GPU sunucusu: `POST` multipart (`file`, `image_id`) → `{"PredictionString": "car 0.93 976 533 98 95 ..."}` |
 
-Model aynı kutuya farklı etiketler verebilir (örn. `van 0.60`, `truck 0.32`, `car 0.26` aynı kutu). `get_detections` bu kutuları
-birleştirip (NMS, IoU ≥ 0.5) en yüksek conf'lu etiketi kullanır; diğer etiketleri `alt_labels`'a yazar. Alternatif bir etiketin
-conf'u ana etiketin en az yarısıysa `type_uncertain=true` olur.
+Model aynı kutuya farklı etiketler verebilir (örn. `van 0.60`, `truck 0.32` aynı kutu). `get_detections` çakışan
+kutuları birleştirir (NMS, IoU ≥ 0.5) ve en yüksek conf'lu sınıfı alır.
 
 ## 5. Yeni tool yazma
 
