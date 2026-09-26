@@ -77,7 +77,9 @@ def test_compare_verdicts():
     assert [c["ok"] for c in r["checks"] if c["aspect"] == "motion"] == [False]
     assert compare("img_000733", "R112")["verdict"] == "contradicts"  # "coming to base" but not closing
     assert compare("img_002256", "R025")["verdict"] == "contradicts"  # 2 trucks claimed, none detected
-    assert compare("img_003464", "R100")["verdict"] == "consistent"  # 7 claimed, 6 detected (tolerance 1)
+    r = compare("img_003464", "R100")  # "7 trucks stopped": 6 trucks seen (count ok) but 3 are driving to base
+    assert r["verdict"] == "contradicts" and {"T0001", "T0028", "T0135"} <= set(r["related"])
+    assert [(c["aspect"], c["ok"]) for c in r["checks"]] == [("count", True), ("motion", False)]
     assert compare("img_008333", "R091")["verdict"] == "contradicts"  # "no heavy movement" vs moving truck
     assert compare("img_000267", "R012")["verdict"] == "irrelevant"  # last night's unverified tip
     assert compare("img_006388", "R001")["verdict"] == "unverifiable"  # "traffic normal"

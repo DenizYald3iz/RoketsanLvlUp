@@ -216,7 +216,23 @@ def _check_vehicle_claim(c: dict, lat: float, lon: float, dets: list, tracks: li
                                    f"iddia {_TYPE_TR[ty]}"})
             related.append(subj_det["ref"])
 
-    if c["motion"]:
+    group = []  # count claims ("5 trucks stopped") are about every counted vehicle, not just the one at the point
+    if c["count"]:
+        for d in area:
+            if _type_ok(ty, d["label"]) and (t := _nearest(tracks, d["lat"], d["lon"], SUBJECT_M)) \
+                    and t not in group:
+                group.append(t)
+    if c["motion"] and group:
+        res = [(t, *_check_motion(c["motion"], t, True)) for t in group]
+        oks = [ok for _, ok, _ in res]
+        if c["motion"].startswith("stopped"):  # one moving vehicle is enough to refute "they are stopped"
+            ok = False if False in oks else True if all(oks) else None
+        else:
+            ok = True if True in oks else False if all(o is False for o in oks) else None
+        txt = " | ".join(txt for _, _, txt in res)
+        checks.append({"aspect": "motion", "ok": ok, "ours": f"sayılan araçların track'leri: {txt}; iddia {c['motion']}"})
+        related += [t["track_id"] for t in group]
+    elif c["motion"]:
         seen = subj_det is not None or bool(c["count"] and any(_type_ok(ty, d["label"]) for d in area))
         ok, txt = _check_motion(c["motion"], subj_trk, seen)
         checks.append({"aspect": "motion", "ok": ok, "ours": f"{txt}; iddia {c['motion']}"})

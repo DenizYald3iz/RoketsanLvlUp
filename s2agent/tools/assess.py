@@ -4,7 +4,7 @@ submit_assessment validates the LLM's alerts against the evidence (ids must exis
 vehicle/track or an accepted report, not about an ignored one). The first invalid call is rejected with the
 problems listed so the LLM can fix it; a second invalid call is accepted with warnings, so a stubborn model
 cannot loop until the turn limit. Reports that compare_report found contradicting are always ignored (task rule:
-trust our detections over reports).
+trust our detections over reports), and so are irrelevant ones.
 """
 import re
 from typing import Literal
@@ -63,13 +63,13 @@ def submit_assessment(alerts: list[Alert], summary: str, ignored_reports: list[s
     """Nihai değerlendirmeyi kaydeder ve agent'ı bitirir. Dikkat gerektiren HER durum için bir alert; yoksa boş liste.
     Alert bir araç/track hakkındadır (subject: 'D01/T0078'); raporlar evidence'a yazılır. level: yuksek = üsse
     yaklaşan ve yakın/hızlı (kısa ETA) ya da acil; orta = izlenmeli; dusuk = bilgi amaçlı.
-    ignored_reports: çelişkili/ilgisiz olduğu için yok sayılan report_id'ler (compare_report 'contradicts'
-    dedikleri otomatik eklenir). Id'ler delillerde olmalı; hatalıysa sorunlar listelenir, düzeltip tekrar çağır."""
+    ignored_reports: çelişkili/ilgisiz olduğu için yok sayılan report_id'ler (compare_report 'contradicts' ve
+    'irrelevant' dedikleri otomatik eklenir). Id'ler delillerde olmalı; hatalıysa sorunlar listelenir, düzeltip tekrar çağır."""
     alerts = [a.model_dump() if hasattr(a, "model_dump") else dict(a) for a in alerts]
     checks = ctx.evidence.get("report_checks", {})
     verdicts = {rid: c.get("verdict") for rid, c in checks.items()}
-    contradicted = {rid for rid, v in verdicts.items() if v == "contradicts"}
-    ignored = set(ignored_reports) | contradicted
+    auto_ignored = {rid for rid, v in verdicts.items() if v in ("contradicts", "irrelevant")}
+    ignored = set(ignored_reports) | auto_ignored
 
     vehicles, reports = _known_ids(ctx)
     problems = _problems(alerts, ignored, vehicles, reports)
@@ -81,8 +81,8 @@ def submit_assessment(alerts: list[Alert], summary: str, ignored_reports: list[s
                 "problems": problems, "_evidence": {"assessment_attempts": attempts}}
 
     warnings = [f"Tekrar denemede düzeltilmedi: {p}" for p in problems]
-    if added := sorted(contradicted - set(ignored_reports)):
-        warnings.append(f"compare_report 'contradicts' dediği için yok sayılanlara eklendi: {added}")
+    if added := sorted(auto_ignored - set(ignored_reports)):
+        warnings.append(f"compare_report 'contradicts'/'irrelevant' dediği için yok sayılanlara eklendi: {added}")
     if kept := sorted(r for r in ignored if verdicts.get(r) == "consistent"):
         warnings.append(f"Tespitle uyumlu (consistent) raporlar yok sayıldı: {kept}")
     for a in alerts:
