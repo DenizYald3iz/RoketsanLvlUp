@@ -26,10 +26,11 @@ export function maxLevel(levels) {
 }
 
 export function renderAlerts(root, agent, imageId) {
+  root.querySelector('.empty')?.remove();
   const a = agent?.assessment;
   if (!a) {
     root.insertAdjacentHTML('afterbegin', `<div class="alert none"><b>${imageId}</b> için GLM çıktısı yok
-      <small>python -m scripts.run ${imageId}</small></div>`);
+      <small>GLM modu “canlı” seçilip tekrar çalıştırılabilir</small></div>`);
     return;
   }
   const cards = [...a.alerts].sort((x, y) => (LEVELS[y.level] || 0) - (LEVELS[x.level] || 0)).map((al) => `
@@ -37,7 +38,7 @@ export function renderAlerts(root, agent, imageId) {
       <div class="ah"><span class="lv lv-${al.level}">${LEVEL_TR[al.level] || al.level}</span><b>${al.title}</b></div>
       <div class="as">${imageId} · ${al.subject}</div>
       <p>${al.reason}</p>
-      <details><summary>DELİLLER (${al.evidence.length})</summary><ul>${al.evidence.map((e) => `<li>${e}</li>`).join('')}</ul></details>
+      <details><summary>Deliller (${al.evidence.length})</summary><ul>${al.evidence.map((e) => `<li>${e}</li>`).join('')}</ul></details>
     </div>`).join('');
   const ignored = a.ignored_reports?.length ? `<div class="ign">Yok sayılan raporlar: ${a.ignored_reports.join(', ')}</div>` : '';
   root.insertAdjacentHTML('afterbegin', `<div class="agroup"><div class="asum"><b>GLM · ${imageId}</b> ${a.summary}</div>${cards}${ignored}</div>`);

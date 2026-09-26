@@ -24,8 +24,12 @@ def graph():
 
 
 def trim(ev: dict) -> dict:
+    from s2agent.data import get_data
+
+    reps = {r["report_id"]: r for r in get_data().reports}
+    checks = {rid: {**c, "text": reps.get(rid, {}).get("text")} for rid, c in (ev.get("report_checks") or {}).items()}
     return {"assessment": ev.get("assessment"), "matches": ev.get("matches"),
-            "kinematics": ev.get("kinematics", {}), "report_checks": ev.get("report_checks", {})}
+            "kinematics": ev.get("kinematics", {}), "report_checks": checks}
 
 
 def load(image_id: str) -> dict | None:

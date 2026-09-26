@@ -11,80 +11,84 @@
   <link href="css/app.css" rel="stylesheet" />
 </head>
 <body>
-  <header>
-    <div class="brand"><span class="logo"></span>SENTINEL<small>// DRONE İSTİHBARAT KOMUTA MERKEZİ</small></div>
+  <header class="topbar">
+    <div class="brand"><span class="logo"></span>SENTINEL</div>
+
+    <div class="controls">
+      <select id="sample" title="Kayıtlı drone görüntüsü seç"></select>
+      <select id="glm-mode" title="GLM ajanı nasıl çalışsın">
+        <option value="live">GLM: canlı çalıştır</option>
+        <option value="cached">GLM: kayıtlı çıktı</option>
+        <option value="off">GLM: kapalı</option>
+      </select>
+      <label class="btn" title="Görüntü yükle (dosya adı = image_id, örn. img_003839.jpg) — ya da sayfaya sürükle">
+        <input id="file" type="file" accept="image/*" multiple hidden />⬆ Yükle
+      </label>
+      <button id="demo" title="Kayıtlı GLM çıktısı olan tüm görüntüleri sırayla oynat">▶ Demo</button>
+      <input id="meta-id" class="meta" placeholder="image_id (dosya adı farklıysa)" />
+    </div>
+
     <div class="stats">
-      <div><small>ÇERÇEVE</small><b id="st-frames">0</b></div>
-      <div><small>ARAÇ</small><b id="st-veh">0</b></div>
-      <div><small>GLM UYARI</small><b id="st-alerts" class="red">0</b></div>
-      <div><small>SİSTEM</small><b class="green blink">● ONLINE</b></div>
-      <div><small>SAAT</small><b id="clock">--:--:--</b></div>
+      <div><b id="st-frames">0</b><small>çerçeve</small></div>
+      <div><b id="st-veh">0</b><small>araç</small></div>
+      <div><b id="st-alerts" class="red">0</b><small>uyarı</small></div>
     </div>
   </header>
 
   <main>
-    <aside class="left">
-      <section class="panel">
-        <h2>GÖRÜNTÜ GİRİŞİ</h2>
-        <label id="drop" class="drop">
-          <input id="file" type="file" accept="image/*" multiple hidden />
-          <span>⬆ DRONE GÖRÜNTÜSÜ BIRAK / SEÇ</span>
-          <small>dosya adı = image_id (örn. img_003839.jpg)</small>
-        </label>
-        <div class="row">
-          <select id="sample"></select>
-          <button id="demo">▶ DEMO</button>
-        </div>
-        <div class="row">
-          <select id="glm-mode">
-            <option value="live">GLM: CANLI ÇALIŞTIR (~2 dk, ~$0.002)</option>
-            <option value="cached">GLM: KAYITLI ÇIKTI (varsa), yoksa canlı</option>
-            <option value="off">GLM: KAPALI</option>
-          </select>
-        </div>
-        <div id="meta-row" class="row meta">
-          <input id="meta-id" placeholder="image_id (dosya adı farklıysa)" />
-        </div>
-      </section>
-      <section class="panel grow">
-        <h2 id="det-title">TESPİTLER</h2>
-        <div id="imgview" class="imgview"></div>
-        <div class="tablewrap">
-          <table id="dets"><thead><tr><th>ID</th><th>TİP</th><th>CONF</th><th>KOORDİNAT</th><th>BÖLGE</th><th>GLM</th></tr></thead><tbody></tbody></table>
-        </div>
-      </section>
-    </aside>
-
     <section class="center">
       <div id="map"></div>
-      <div id="brain" class="brain"></div>
       <div id="inspect" class="inspect"></div>
-      <div id="intel" class="intel"></div>
-      <div class="hud tl">MERKEZ ÜS · 39.92184N 32.85306E</div>
-      <div class="hud tr"><select id="basemap"><option value="sat">UYDU</option><option value="dark">KARANLIK</option></select></div>
+      <div class="hud tr"><select id="basemap" title="Harita altlığı"><option value="sat">Uydu</option><option value="dark">Koyu</option></select></div>
       <div class="hud legend">
-        <span style="--c:#22e6ff">OTOMOBİL</span><span style="--c:#b388ff">PANELVAN</span>
-        <span style="--c:#ffb020">KAMYON</span><span style="--c:#ff4d6d">OTOBÜS</span>
+        <span style="--c:#22e6ff">Otomobil</span><span style="--c:#b388ff">Panelvan</span>
+        <span style="--c:#ffb020">Kamyon</span><span style="--c:#ff4d6d">Otobüs</span>
       </div>
-      <div id="logbox" class="logbox">
-        <div class="loghead"><span>GLM · SİSTEM AKIŞI</span><span><button id="big-log" title="büyüt/küçült">⤢</button> <button id="toggle-log" title="aç/kapat">▾</button></span></div>
-        <div id="log" class="log"></div>
-      </div>
-      <button id="toggle-left" class="edge el" title="sol panel">◀</button>
-      <button id="toggle-right" class="edge er" title="sağ panel">▶</button>
+      <button id="toggle-side" class="edge" title="Yan paneli gizle / göster">▶</button>
     </section>
 
-    <aside class="right">
-      <section class="panel">
-        <h2>BÖLGE DURUMU</h2>
+    <aside class="side" id="side">
+      <div class="side-top">
+        <div id="brain" class="brain"></div>
+        <nav class="tabs">
+          <a href="#sec-image" data-sec="sec-image">Görüntü<i id="nb-image"></i></a>
+          <a href="#sec-alerts" data-sec="sec-alerts">Karar<i id="nb-alerts"></i></a>
+          <a href="#sec-reports" data-sec="sec-reports">Raporlar<i id="nb-reports"></i></a>
+          <a href="#sec-zones" data-sec="sec-zones">Bölgeler</a>
+          <a href="#sec-log" data-sec="sec-log">Akış<i id="nb-log"></i></a>
+        </nav>
+      </div>
+
+      <section class="panel" id="sec-image">
+        <h2 id="det-title">Görüntü ve tespitler</h2>
+        <div id="imgview" class="imgview"></div>
+        <div class="tablewrap">
+          <table id="dets"><thead><tr><th>ID</th><th>Tip</th><th>Conf</th><th>Bölge · üsse</th><th>GLM</th></tr></thead><tbody></tbody></table>
+        </div>
+      </section>
+
+      <section class="panel" id="sec-alerts">
+        <h2>GLM kararı</h2>
+        <div id="alerts" class="alerts"><p class="empty">Bir görüntü işlenince ajanın uyarıları burada görünür.</p></div>
+      </section>
+
+      <section class="panel" id="sec-reports">
+        <h2>Saha raporları</h2>
+        <div id="intel" class="intel"><p class="empty">Görüntüyle ilgili raporlar ve doğrulama sonuçları burada görünür.</p></div>
+      </section>
+
+      <section class="panel" id="sec-zones">
+        <h2>Bölge durumu</h2>
         <div id="zones" class="zones"></div>
       </section>
-      <section class="panel grow">
-        <h2>GLM AJAN UYARILARI</h2>
-        <div id="alerts" class="alerts"></div>
+
+      <section class="panel" id="sec-log">
+        <h2>Ajan akışı <span class="hint">satıra tıkla → ayrıntı</span></h2>
+        <div id="log" class="log"></div>
       </section>
     </aside>
   </main>
+  <div id="dropmask" class="dropmask">Görüntüyü bırak</div>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

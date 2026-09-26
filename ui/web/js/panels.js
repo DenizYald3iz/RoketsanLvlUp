@@ -1,5 +1,6 @@
-// Side panels: zone board, detection table, terminal log, top stats.
+// Side column content: zone board, detection table, agent log, top stats.
 import { labelColor, labelTr, prettyZone } from './config.js';
+import { LEVEL_TR } from './agent.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -34,21 +35,24 @@ export function renderDetections(res, onHover, onClick) {
   for (const d of res.detections) {
     const tr = document.createElement('tr');
     tr.dataset.key = d.key;
+    tr.title = `${d.lat.toFixed(5)}N ${d.lon.toFixed(5)}E`;
     tr.innerHTML = `<td>${d.det_id}</td><td style="color:${labelColor(d.label)}">${labelTr(d.label)}</td>
-      <td>${(d.conf * 100).toFixed(0)}%</td><td class="mono">${d.lat.toFixed(5)}<br>${d.lon.toFixed(5)}</td>
-      <td>${prettyZone(d.zone)}<br><small>${d.base_dist_m} m · ${d.direction}</small></td><td class="lvl"></td>`;
+      <td>${(d.conf * 100).toFixed(0)}%</td><td>${prettyZone(d.zone)}<br><small>${d.base_dist_m} m · ${d.direction}</small></td><td class="lvl"></td>`;
     tr.onmouseenter = () => onHover(d.key, true);
     tr.onmouseleave = () => onHover(d.key, false);
     tr.onclick = () => onClick?.(d.key);
     tb.appendChild(tr);
   }
-  $('#det-title').textContent = `TESPİTLER · ${res.image_id} · ${res.capture_time}`;
+  $('#det-title').textContent = `Görüntü ve tespitler · ${res.image_id} · ${res.capture_time}`;
 }
 
 export function markDetectionRow(key, level) {
   const td = document.querySelector(`#dets tr[data-key="${key}"] .lvl`);
-  if (td) td.innerHTML = `<span class="lv lv-${level}">${level.toUpperCase()}</span>`;
+  if (td) td.innerHTML = `<span class="lv lv-${level}">${LEVEL_TR[level] || level}</span>`;
 }
+
+let onLog = null;
+export const onLogLine = (fn) => (onLog = fn);
 
 // detail (optional, plain text): full content shown when the line is clicked.
 export function log(msg, cls = '', detail = '') {
@@ -66,16 +70,11 @@ export function log(msg, cls = '', detail = '') {
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
   box.appendChild(el);
   if (atBottom) box.scrollTop = box.scrollHeight; // don't yank the view while someone is reading
+  onLog?.(cls);
 }
 
 export function setStats({ frames, vehicles, alerts }) {
   $('#st-frames').textContent = frames;
   $('#st-veh').textContent = vehicles;
   $('#st-alerts').textContent = alerts;
-}
-
-export function startClock() {
-  const tick = () => ($('#clock').textContent = new Date().toLocaleTimeString('tr-TR'));
-  tick();
-  setInterval(tick, 1000);
 }

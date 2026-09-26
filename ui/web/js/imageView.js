@@ -2,7 +2,7 @@
 import { labelColor, labelTr } from './config.js';
 
 export function createImageView(root) {
-  root.innerHTML = `<div class="iv-empty">GÖRÜNTÜ BEKLENİYOR</div><canvas></canvas><div class="scan"></div>`;
+  root.innerHTML = `<div class="iv-empty">Henüz görüntü yok.<br>Üstten bir görüntü seçin, yükleyin ya da sayfaya sürükleyin.</div><canvas></canvas><div class="scan"></div>`;
   const canvas = root.querySelector('canvas');
   const ctx = canvas.getContext('2d');
   let img = null, boxes = [], size = [1, 1], hl = null, crop = null;

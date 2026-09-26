@@ -29,6 +29,13 @@ export function createMap(container, layout) {
   const zoneEls = {};
   const links = [];
   const ready = new Promise((r) => map.on('load', r));
+  // whole sector ring (plus its labels) fits whatever space the map has
+  const ringBounds = () => {
+    const pts = circle(base, CFG.outerRadiusM * 0.92, 32), lons = pts.map((p) => p[0]), lats = pts.map((p) => p[1]);
+    return [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
+  };
+  const PAD = { top: 28, right: 28, bottom: 52, left: 28 }; // bottom: room for the legend
+  ready.then(() => map.fitBounds(ringBounds(), { padding: PAD, duration: 0 }));
 
   ready.then(() => {
     addSectors();
@@ -161,7 +168,7 @@ export function createMap(container, layout) {
     },
 
     async overview() {
-      map.flyTo({ center: base, zoom: CFG.overviewZoom, duration: CFG.flyMs });
+      map.fitBounds(ringBounds(), { padding: PAD, duration: CFG.flyMs });
       await sleep(CFG.flyMs);
     },
 

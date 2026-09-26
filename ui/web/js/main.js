@@ -26,23 +26,25 @@ const inspector = createInspector($('#inspect'));
 const intel = createIntel($('#intel'));
 
 ui.renderZoneBoard(layout);
-ui.startClock();
-$('#sample').innerHTML = '<option value="">— örnek görüntü —</option>' +
+$('#sample').innerHTML = '<option value="">Görüntü seç…</option>' +
   images.map((i) => `<option value="${i.image_id}">${i.image_id} · ${i.capture_time}</option>`).join('');
 await map.ready;
-const panels = createLayout(map.map);
+const side = createLayout(map.map);
 map.setFrames(images);
 map.onFrameClick((id) => enqueueSample(id));
 map.onDetClick((key) => selectVehicle(key));
 map.onEmptyClick(() => selectVehicle(null));
 ui.log(`Sistem hazır · ${images.length} kayıtlı çerçeve · ${layout.zones.length} bölge + merkez`, 'ok');
+ui.onLogLine((cls) => side.badge('log', '•', { hot: cls === 'err' })); // unread marker for later lines
 
 // ---------- inputs ----------
 $('#file').onchange = (e) => enqueueFiles(e.target.files);
-const dz = $('#drop');
-dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
-dz.ondragleave = () => dz.classList.remove('over');
-dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('over'); enqueueFiles(e.dataTransfer.files); };
+const mask = $('#dropmask'); // drop an image anywhere on the page
+let dragDepth = 0;
+window.addEventListener('dragenter', (e) => { if (e.dataTransfer?.types.includes('Files')) { dragDepth++; mask.classList.add('on'); } });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; mask.classList.remove('on'); } });
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => { e.preventDefault(); dragDepth = 0; mask.classList.remove('on'); enqueueFiles(e.dataTransfer.files); });
 $('#sample').onchange = (e) => e.target.value && enqueueSample(e.target.value);
 $('#basemap').onchange = (e) => map.setBasemap(e.target.value);
 $('#demo').onclick = async () => {
@@ -52,6 +54,11 @@ $('#demo').onclick = async () => {
   ui.log(`DEMO · GLM çıktısı olan ${withAgent.length} çerçeve sıraya alındı`, 'warn');
   withAgent.forEach(enqueueSample);
 };
+
+// deep link: ?image=img_003839&glm=cached|live|off
+const qs = new URLSearchParams(location.search);
+if (qs.get('glm')) $('#glm-mode').value = qs.get('glm');
+if (known.has(qs.get('image'))) { $('#sample').value = qs.get('image'); enqueueSample(qs.get('image')); }
 
 function enqueueFiles(files) {
   for (const f of files) state.queue.push({ file: f, imageId: $('#meta-id').value.trim() });
@@ -75,17 +82,17 @@ async function pump() {
 async function run(file, imageId) {
   const id = imageId || file.name.replace(/\.[^.]+$/, '');
   if (!known.has(id)) {
-    $('#meta-row').classList.add('need');
+    $('#meta-id').classList.add('need');
     throw new Error(`'${id}' için köşe koordinatı yok — image_id gir ya da listeden seç`);
   }
-  $('#meta-row').classList.remove('need');
-  const ctx = { id, url: URL.createObjectURL(file), res: null, chain: Promise.resolve(), inspecting: false, leftClosed: false };
+  $('#meta-id').classList.remove('need');
+  const ctx = { id, url: URL.createObjectURL(file), res: null, chain: Promise.resolve(), inspecting: false };
   ui.log(`▲ YÜKLEME · ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
   await iv.show(ctx.url);
   iv.scanning(true);
   intel.clear();
+  side.badge('reports', '');
   map.clearTracks();
-  panels.openLeft();
 
   const mode = $('#glm-mode').value;
   let agent = null;
@@ -93,7 +100,8 @@ async function run(file, imageId) {
     locate(ctx, await api.analyze(file, id, CFG.minConf));
     await ctx.chain;
     if (mode === 'cached') agent = await loadAgent(id);
-    if (agent) ui.log(`✦ GLM · kayıtlı çıktı kullanıldı (${id})`, 'warn');
+    if (agent) { ui.log(`✦ GLM · kayıtlı çıktı kullanıldı (${id})`, 'warn'); brain.cached(id); }
+    if (mode === 'off') brain.off(id);
   }
   if (mode === 'live' || (mode === 'cached' && !agent)) agent = await runLive(ctx);
   await ctx.chain;
@@ -116,6 +124,7 @@ async function placeFrame(ctx, res) {
   const fresh = !state.done.has(res.image_id);
   ui.log(`◉ ${res.image_id} · ${res.capture_time} · ${prettyZone(res.zone)} · üsse ${res.base_dist_m} m · ${res.detections.length} araç`, 'ok');
   ui.renderDetections(res, (key, on) => { map.highlight(key, on); iv.highlight(on ? key : null); }, selectVehicle);
+  side.badge('image', String(res.detections.length));
 
   await map.focusFrame(res, ctx.url);
   for (const d of res.detections) {
@@ -161,8 +170,6 @@ function onAgentEvent(ctx, ev) {
     ui.log(`✎ tam konuşma geçmişi → ${ev.debug}`, 'ok');
   }
   if (ev.type !== 'trace') return;
-  if (ev.stage === 'REPORTS' && !ctx.leftClosed) { ctx.leftClosed = true; panels.closeLeft(); } // make room for intel
-
   if (ev.kind === 'llm' && ctx.inspecting) { // GLM's reply after looking = its finding
     ctx.inspecting = false;
     inspector.finding(ev.text || ev.calls.map((c) => c.name).join(', '));
@@ -191,7 +198,12 @@ function onAgentEvent(ctx, ev) {
     trk.cache[u.track.track_id] = u.track;
     ctx.chain = ctx.chain.then(() => map.flashTrack(u.track));
   }
-  if (u.report) intel.add(u.report);
+  if (u.report) { intel.add(u.report); reportBadge(); }
+}
+
+function reportBadge() {
+  const c = intel.counts();
+  side.badge('reports', String(intel.count()), { hot: !!c.bad });
 }
 
 // ---------- vehicle ↔ track ----------
@@ -231,10 +243,15 @@ function applyAgent(res, agent) {
   }
   renderAlerts($('#alerts'), agent, res.image_id);
   if (!agent) return;
+  if (!intel.count()) { // saved output: the live stream didn't fill the reports, rebuild them from report_checks
+    for (const [rid, c] of Object.entries(agent.report_checks || {})) intel.add({ report_id: rid, ...c });
+    reportBadge();
+  }
   const n = agent.assessment?.alerts?.length || 0;
   state.alerts += n;
   ui.setStats({ frames: state.done.size, vehicles: state.vehicles, alerts: state.alerts });
   const top = maxLevel(levels);
+  side.badge('alerts', String(n), { hot: top === 'yuksek' });
   if (top) { map.setZoneThreat(res.zone, LEVELS[top]); ui.setZoneLevel(res.zone, top); }
   ui.log(`✦ GLM KARAR · ${n} uyarı · en yüksek: ${top ? top.toUpperCase() : '—'}`, top === 'yuksek' ? 'err' : 'warn');
 }

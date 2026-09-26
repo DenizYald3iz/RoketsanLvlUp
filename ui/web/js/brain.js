@@ -7,20 +7,23 @@ const pretty = (s) => { try { return JSON.stringify(JSON.parse(s), null, 1); } c
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
 export function createBrain(root) {
-  root.innerHTML = `<span class="bt">GLM AJAN</span>` +
-    STAGES.map((s) => `<span class="st" data-s="${s}">${TR[s]}</span>`).join('<i>›</i>') + `<span class="bs">BEKLEMEDE</span>`;
+  root.innerHTML = STAGES.map((s) => `<span class="st" data-s="${s}">${TR[s]}</span>`).join('') +
+    `<span class="bs"><b>GLM ajan</b> · <span class="bst">beklemede — üst menüden bir görüntü seçin</span></span>`;
   const chip = (s) => root.querySelector(`[data-s="${s}"]`);
-  const status = (t) => (root.querySelector('.bs').textContent = t);
+  const status = (t) => (root.querySelector('.bst').textContent = t);
+  let cur = '';
 
   return {
     reset(imageId) {
+      cur = imageId;
       root.classList.add('on');
       root.querySelectorAll('.st').forEach((e) => (e.className = 'st'));
       status(`${imageId} · başlatılıyor…`);
     },
     event(ev) {
-      if (ev.type === 'start') return status(`${ev.image_id} · harcanan $${ev.spend}`);
+      if (ev.type === 'start') return status(`${ev.image_id} · ajan başladı`);
       if (ev.type !== 'trace') return;
+      status(`${cur} · ${TR[ev.stage] || ev.stage} aşaması · ${ev.t}s`);
       const c = chip(ev.stage);
       if (c && !c.classList.contains('done')) c.classList.add('active');
       const tag = `<span class="stg">[${ev.t}s ${ev.stage}]</span>`;
@@ -38,5 +41,13 @@ export function createBrain(root) {
       }
     },
     finish(msg) { status(msg); root.classList.remove('on'); },
+    cached(imageId) { // saved output shown: every stage already ran earlier
+      root.querySelectorAll('.st').forEach((e) => (e.className = 'st done'));
+      status(`${imageId} · kayıtlı çıktı gösteriliyor`);
+    },
+    off(imageId) {
+      root.querySelectorAll('.st').forEach((e) => (e.className = 'st'));
+      status(`${imageId} · GLM kapalı, yalnızca tespitler`);
+    },
   };
 }
