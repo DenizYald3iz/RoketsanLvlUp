@@ -78,6 +78,7 @@ HI_CONF, LO_CONF = 0.5, 0.3  # detection is trusted / only weak support
 SUBJECT_M = 15.0  # report coordinate ↔ its subject vehicle
 AREA_M = 80.0  # "civarında / çevresinde" area used for counts (a 6-truck group spans ~70 m)
 STOP_MPS, MOVE_MPS, CLOSE_MPS = 0.5, 1.0, 0.3
+TREND_M = 100  # base-distance change over 60 min = approaching/receding (same rule as get_track_kinematics)
 HEAVY = {"truck", "bus"}
 _TYPES = [("agir arac", "heavy"), ("kamyon", "truck"), ("otobus", "bus"), ("panelvan", "van"),
           ("otomobil", "car"), ("arac", "any")]
@@ -128,8 +129,10 @@ def _motion(pts: list[tuple[float, float]], base: tuple[float, float]) -> dict:
         return sum(seg[-k:]) / (k * 300) if k else 0.0
 
     k = min(6, len(bd) - 1)
+    delta60 = bd[-1 - min(12, len(bd) - 1)] - bd[-1]
     return {"speed_30m_mps": round(speed(6), 1), "speed_60m_mps": round(speed(12), 1),
             "closing_30m_mps": round((bd[-1 - k] - bd[-1]) / (k * 300), 1) if k else 0.0,
+            "trend_60m": "approaching" if delta60 > TREND_M else "receding" if delta60 < -TREND_M else "stationary",
             "base_dist_m": round(bd[-1])}
 
 
@@ -159,7 +162,7 @@ def _nearest(items: list[dict], lat: float, lon: float, max_m: float) -> dict | 
 
 def _mot_txt(t: dict) -> str:
     return (f"{t['track_id']}: son 30 dk {t['speed_30m_mps']} m/s, son 60 dk {t['speed_60m_mps']} m/s, "
-            f"üsse yaklaşma {t['closing_30m_mps']:+} m/s")
+            f"üsse yaklaşma {t['closing_30m_mps']:+} m/s, 60 dk eğilim {t['trend_60m']}")
 
 
 def _check_motion(claim: str, trk: dict | None, seen: bool) -> tuple[bool | None, str]:
@@ -174,12 +177,13 @@ def _check_motion(claim: str, trk: dict | None, seen: bool) -> tuple[bool | None
         return (True if v < STOP_MPS else False if v >= MOVE_MPS else None), txt
     if claim == "moving":
         return (True if v >= MOVE_MPS else False if v < STOP_MPS else None), txt
+    trend = trk["trend_60m"]  # 30-min closing and 60-min trend can disagree; then the claim is only weak
     if claim == "approaching":
-        if v < STOP_MPS or cl <= 0:
+        if v < STOP_MPS or (cl <= 0 and trend != "approaching"):
             return False, txt
         return (True if v >= MOVE_MPS and cl > CLOSE_MPS else None), txt
     # leaving
-    if v < STOP_MPS or cl > CLOSE_MPS:
+    if v < STOP_MPS or cl > CLOSE_MPS or (cl >= 0 and trend == "approaching"):
         return False, txt
     return (True if cl < -CLOSE_MPS else None), txt
 
@@ -309,6 +313,7 @@ def compare_report(report_id: str, *, ctx: ToolContext) -> dict:
     reason = "; ".join(f"{ch['aspect']}: {'uyumlu' if ch['ok'] else 'ÇELİŞKİ' if ch['ok'] is False else 'zayıf'} "
                        f"({ch['ours']})" for ch in checks) or "Kontrol edilebilir iddia yok."
     if claim["friendly"]:
-        reason += ("; dost beyanı " + ("tespitle çeliştiği için geçersiz" if verdict == "contradicts" else
-                                       "kimlik açısından doğrulanamaz, tespitle çelişmiyor"))
+        reason += "; dost beyanı " + {"contradicts": "tespitle çeliştiği için geçersiz",
+                                      "consistent": "kimlik açısından doğrulanamaz, tespitle çelişmiyor"}.get(
+            verdict, "tespitle desteklenmiyor (zayıf); dost kabul etmek için yeterli değil")
     return {**out, "verdict": verdict, "checks": checks, "related": list(dict.fromkeys(related)), "reason": reason}

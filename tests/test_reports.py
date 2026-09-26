@@ -75,7 +75,9 @@ def test_compare_verdicts():
     r = compare("img_001147", "R054")  # "truck stopped" but T0078 moves 3.9 m/s
     assert r["verdict"] == "contradicts" and "T0078" in r["related"]
     assert [c["ok"] for c in r["checks"] if c["aspect"] == "motion"] == [False]
-    assert compare("img_000733", "R112")["verdict"] == "contradicts"  # "coming to base" but not closing
+    r = compare("img_000733", "R112")  # "our car coming to base": closer than 60 min ago, but not closing in last 30
+    assert r["verdict"] == "unverifiable" and "dost kabul etmek için yeterli değil" in r["reason"]
+    assert compare("img_008001", "R105")["verdict"] == "contradicts"  # "leaving" but approaching over 60 min
     assert compare("img_002256", "R025")["verdict"] == "contradicts"  # 2 trucks claimed, none detected
     r = compare("img_003464", "R100")  # "7 trucks stopped": 6 trucks seen (count ok) but 3 are driving to base
     assert r["verdict"] == "contradicts" and {"T0001", "T0028", "T0135"} <= set(r["related"])
