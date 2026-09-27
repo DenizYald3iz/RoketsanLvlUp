@@ -1,7 +1,12 @@
-# Stage 2 — Saha Raporu Destekli LLM Agent
+# Saha Raporu Destekli LLM Agent + Komuta Merkezi
 
 Drone görüntüsünü, araç hareket kayıtlarını ve saha raporlarını **aşama aşama, tool çağırarak** değerlendiren
-bir LangGraph agent'ı. Çıktı: görüntüde **hangi durumların dikkat gerektirdiği**, **nedeni** ve **dayandığı veri**.
+bir LangGraph agent'ı ve onu canlı izleyen bir **komuta merkezi arayüzü**.
+Çıktı: görüntüde **hangi durumların dikkat gerektirdiği**, **nedeni** ve **dayandığı veri**.
+
+- **Agent:** LOCATE → TRACKS → MOTION → REPORTS → ASSESS. Her aşamada GLM sadece o aşamanın tool'larını görür; geçişleri kod (gate) kontrol eder.
+- **Arayüz:** Fotoğraf yüklenir → GLM başlar → tespit kutuları koordinata çevrilip haritada Merkez Üs + 8 bölgeye yerleşir →
+  GLM'in her tool çağrısı ekranda canlı görünür (görüntü inceleme, track izleri, rapor doğrulama) → GLM'in kararı haritayı renklendirir.
 
 LLM: yarışma gateway'i üzerinden **GLM-5.3-flash** (OpenAI uyumlu). Görev tanımı: [`docs/gorev_tanimi.txt`](docs/gorev_tanimi.txt)
 (orijinali `data/stage2/gorev_tanimi.pdf`).
@@ -9,25 +14,27 @@ LLM: yarışma gateway'i üzerinden **GLM-5.3-flash** (OpenAI uyumlu). Görev ta
 ---
 
 ## İçindekiler
-1. [Hızlı kurulum (5 dk)](#1-hızlı-kurulum-5-dk)
-2. [Çalıştırma](#2-çalıştırma)
-3. [Mimari: aşamalı agent](#3-mimari-aşamalı-agent)
-4. [Tool listesi](#4-tool-listesi)
-5. [Yeni tool yazma](#5-yeni-tool-yazma)
-6. [Yeni aşama ekleme](#6-yeni-aşama-ekleme)
-7. [Test](#7-test)
-8. [Veri](#8-veri)
-9. [Ayarlar (.env)](#9-ayarlar-env)
-10. [GLM & bütçe notları](#10-glm--bütçe-notları)
-11. [Sorun giderme](#11-sorun-giderme)
-12. [Ekip çalışma düzeni](#12-ekip-çalışma-düzeni)
-13. [Proje yapısı](#13-proje-yapısı)
+1. [Kurulum](#1-kurulum)
+2. [Hızlı başlangıç: arayüzü kaldır](#2-hızlı-başlangıç-arayüzü-kaldır)
+3. [Komuta merkezi arayüzü](#3-komuta-merkezi-arayüzü)
+4. [Agent'ı komut satırından çalıştırma](#4-agentı-komut-satırından-çalıştırma)
+5. [Mimari: aşamalı agent](#5-mimari-aşamalı-agent)
+6. [Tool listesi](#6-tool-listesi)
+7. [Yeni tool yazma](#7-yeni-tool-yazma)
+8. [Yeni aşama ekleme](#8-yeni-aşama-ekleme)
+9. [Test](#9-test)
+10. [Veri](#10-veri)
+11. [Ayarlar (.env)](#11-ayarlar-env)
+12. [GLM & bütçe notları](#12-glm--bütçe-notları)
+13. [Sorun giderme](#13-sorun-giderme)
+14. [Proje yapısı](#14-proje-yapısı)
 
 ---
 
-## 1. Hızlı kurulum (5 dk)
+## 1. Kurulum
 
-**Gereken:** Python **3.10+** ve git. Veri (`data/stage2/`) ve API key (`.env`) repoda hazır, ayrıca bir şey indirmen gerekmiyor.
+**Gereken:** Python **3.10+**, git ve internet bağlantısı (GLM gateway'i; arayüzde harita altlığı ve fontlar CDN'den gelir).
+Veri (`data/stage2/`) repoda hazır, ayrıca bir şey indirmen gerekmiyor.
 
 ### macOS / Linux
 ```bash
@@ -36,6 +43,7 @@ cd stage2-agent
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env          # sonra .env içindeki LLM_API_KEY'i doldur
 python -m scripts.doctor
 ```
 
@@ -46,6 +54,7 @@ cd stage2-agent
 py -3 -m venv .venv
 .venv\Scripts\Activate.ps1        # hata verirse: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 pip install -r requirements.txt
+copy .env.example .env             # sonra .env içindeki LLM_API_KEY'i doldur
 python -m scripts.doctor
 ```
 
@@ -72,8 +81,121 @@ Stage-2 agent kurulum kontrolü
 
 ---
 
-## 2. Çalıştırma
+## 2. Hızlı başlangıç: arayüzü kaldır
 
+Arayüz ve backend **tek bir süreçtir** (FastAPI hem API'yi hem web sayfasını sunar). Ayrı bir frontend build'i yoktur.
+
+### Başlatma
+```bash
+python -m ui.server
+```
+Tarayıcıda aç: **http://127.0.0.1:8000**
+
+Farklı adres/port için:
+```bash
+UI_HOST=0.0.0.0 UI_PORT=8080 python -m ui.server          # macOS / Linux
+$env:UI_PORT=8080; python -m ui.server                     # Windows PowerShell
+```
+`UI_HOST=0.0.0.0` aynı ağdaki başka bilgisayarlardan erişim sağlar (demo ekranı için).
+
+### Durdurma
+- Sunucuyu başlattığın terminalde **Ctrl+C**.
+- Arka planda kaldıysa ya da port doluysa (`address already in use`):
+```bash
+lsof -ti:8000 | xargs kill                                                           # macOS / Linux
+Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess | Stop-Process   # Windows PowerShell
+```
+
+### Yeniden başlatma
+Python dosyası (`ui/*.py`, `s2agent/*`) değiştiyse durdurup yeniden başlat. Sadece `ui/web/` altındaki HTML/CSS/JS
+değiştiyse sunucuyu yeniden başlatmaya gerek yok; tarayıcıda **Cmd+Shift+R** (Windows: **Ctrl+F5**) yeterli.
+
+### İlk deneme (1 dakika)
+1. Sol paneldeki **örnek görüntü** listesinden `img_003839` seç (ya da haritadaki bir cyan çerçeveye tıkla).
+2. GLM modu **CANLI** ise gerçek agent çalışır (~1–2 dk, ~0.002 USD). Beklemek istemezsen **KAYITLI** seç
+   (daha önce `outputs/` altına kaydedilmiş sonuçlar anında gelir).
+3. **▶ DEMO**: kayıtlı çıktısı olan tüm görüntüleri sırayla oynatır, bütçe harcamaz.
+
+---
+
+## 3. Komuta merkezi arayüzü
+
+### Akış
+```
+fotoğraf yükle ──▶ GLM agent başlar (canlı, NDJSON stream)
+                      │
+   LOCATE  get_image_info ──▶ kutular → pixel_to_latlon → haritaya düşer → Merkez Üs / 8 bölgeye sayılır
+           view_image     ──▶ "HEDEF ANALİZİ" penceresi: GLM'in baktığı crop büyütülür, GLM'in bulgusu yazılır
+   TRACKS  match_tracks   ──▶ araçlar kilitlenir: D04·T0183
+   MOTION  get_track_kinematics ──▶ track izi kısa süre parlar (GLM bu araca bakıyor)
+   REPORTS compare_report ──▶ rapor kartı + DOĞRULANDI / ÇELİŞKİ / DOĞRULANAMADI damgası
+   ASSESS  submit_assessment ──▶ uyarılar: araç ve bölge YÜKSEK / ORTA / DÜŞÜK renklenir
+```
+Koordinat hesabı GLM'e yaptırılmaz: GLM `get_image_info`'yu çağırır, hesabı kod yapar (PDF formülü, `s2agent/geo.py`).
+
+### Ekran
+| Bölüm | İçerik |
+|---|---|
+| Sol panel | Yükleme (sürükle-bırak, çoklu dosya), örnek görüntü, **DEMO**, GLM modu; görüntü + animasyonlu kutular; tespit tablosu (tip, conf, koordinat, bölge, GLM seviyesi). GLM REPORTS aşamasına gelince kendiliğinden kapanır, kenardaki ▶ ile açılır |
+| Harita | Uydu / karanlık altlık, Merkez Üs çemberi + 8 sektör, menzil halkaları, radar taraması, 40 görüntünün çerçevesi, yüklenen fotoğraf haritada kendi köşe koordinatlarına oturur |
+| Üst şerit | **GLM AJAN**: KONUM › İZ EŞLEME › HAREKET › RAPORLAR › KARAR aşamaları canlı yanar |
+| Alt log | GLM ve tool akışı. **Satıra tıkla** → tam argümanlar ve tam tool sonucu. ⤢ büyüt, ▾ kapat |
+| Sağ panel | Bölge durum kartları (araç sayısı, tip dağılımı, GLM seviyesi) ve GLM uyarı kartları (neden + deliller). Kenardaki ▶ ile kapanır |
+
+**Araca tıkla** (haritada ya da tabloda) → sadece o aracın 2 saatlik izi, yön oku ve hız / ETA / üsse mesafe etiketi.
+Boş yere tıklayınca seçim kapanır. Renk: kırmızı = üsse yaklaşıyor, turuncu = hareketli, gri = duruyor.
+
+### GLM modları
+| Mod | Ne yapar |
+|---|---|
+| **CANLI** (varsayılan) | Gerçek agent'ı çalıştırır, adımları canlı gösterir, sonucu `outputs/<id>.json`'a kaydeder |
+| **KAYITLI** | `outputs/<id>.json` varsa onu gösterir (anında, bütçesiz); yoksa canlı çalıştırır |
+| **KAPALI** | Sadece tespit → koordinat → bölge; GLM çağrılmaz |
+
+### Yüklenen fotoğrafın koordinatı
+Köşe koordinatları `image_meta.json`'dan gelir, bu yüzden **dosya adı `image_id` olmalı** (`img_003839.jpg`).
+Ad farklıysa sol panelde açılan kutuya `image_id` yazılır. `image_meta.json`'da olmayan bir fotoğraf konumlandırılamaz.
+
+### Debug: GLM nasıl davrandı?
+Her canlı çalıştırmanın sonunda **`debug.md`** (repo kökü, her seferinde üzerine yazılır; git'e girmez) oluşur:
+zaman çizelgesi (hangi saniyede hangi tool, gate kararları), **LLM'e giden konuşma geçmişinin tamamı** (system prompt,
+aşama mesajları, GLM cevapları, reasoning, tool çağrıları ve tam sonuçları) ve nihai değerlendirme.
+Yolu `DEBUG_MD` ile değiştirilebilir.
+
+### Hızlı geçiş (deneysel)
+Arayüz, gate şartı sağlanan aşamalarda GLM'in "aşama özeti" turunu atlar (`FAST_STAGES`, varsayılan
+`TRACKS,MOTION,REPORTS,ASSESS`). LOCATE hariç tutulur, çünkü GLM orada `view_image` çağırabilir. Kapatmak için:
+`FAST_STAGES= python -m ui.server`. `scripts.run` bundan etkilenmez.
+
+### API (arayüzün kullandığı)
+| Endpoint | Açıklama |
+|---|---|
+| `GET /api/layout` | Merkez Üs, 8 bölge (merkez + yön), merkez çember yarıçapı |
+| `GET /api/images` | 40 görüntünün çekim saati ve yerdeki çerçevesi |
+| `GET /api/images/{id}/file` | Görüntü dosyası |
+| `POST /api/analyze` | multipart `file`, `image_id?`, `min_conf?` → tespitler + lat/lon + bölge (GLM'siz) |
+| `POST /api/agent/{id}/run` | Canlı GLM agent; NDJSON stream: `start` → `trace` (tool olaylarında `ui` payload'ı) → `done` / `error` |
+| `GET /api/agent/{id}` | Kayıtlı agent çıktısı (`outputs/<id>.json`) |
+| `GET /api/tracks/{track_id}` | Track noktaları |
+
+### Arayüzü değiştirmek
+Her dosya tek iş yapar; build adımı yok, düz ES modülleri:
+| Dosya | Sorumluluk |
+|---|---|
+| `ui/pipeline.py` | kutu → lat/lon → bölge. **Bölge kuralı ve Merkez Üs yarıçapı (`CENTER_RADIUS_M`) burada** |
+| `ui/live_agent.py` | canlı agent stream'i, tool → görsel payload (`ui_payload`), `debug.md` |
+| `ui/server.py` | sadece HTTP endpoint'leri |
+| `ui/web/js/config.js` | renkler, zamanlamalar, yarıçaplar, track kuyruk uzunluğu |
+| `ui/web/js/main.js` | akış (yükle → GLM → görseller → karar); başka iş yok |
+| `map.js` · `imageView.js` · `panels.js` · `layout.js` | harita · görüntü+kutular · paneller/log · panel aç-kapa |
+| `brain.js` · `inspect.js` · `intel.js` · `agent.js` | aşama şeridi · görüntü inceleme · rapor kartları · GLM uyarıları |
+
+Yeni bir tool'u ekranda göstermek için: `ui/live_agent.py::ui_payload`'a tool adına göre bir payload ekle,
+`main.js::onAgentEvent`'te o payload'ı bir görsele bağla.
+
+---
+
+## 4. Agent'ı komut satırından çalıştırma
 ```bash
 python -m pytest -q                       # LLM'siz testler, bütçe harcamaz (~1 sn)
 python -m scripts.check_budget            # harcanan / 15 USD
@@ -119,7 +241,7 @@ Gate durumları: `pass` (LLM tamamladı), `nudge` (eksik var, LLM uyarıldı), `
 
 ---
 
-## 3. Mimari: aşamalı agent
+## 5. Mimari: aşamalı agent
 
 ```
  START
@@ -159,7 +281,7 @@ Temel kurallar:
 
 ---
 
-## 4. Tool listesi
+## 6. Tool listesi
 
 Durum: ✅ çalışıyor · 🟡 iskelet (imza ve docstring hazır, gövde TODO; geçerli ama boş sonuç döner)
 
@@ -208,7 +330,9 @@ img_000002,none                                                 # hiç araç yok
 Model aynı kutuya farklı etiketler verebilir (örn. `van 0.60`, `truck 0.32` aynı kutu). `get_detections` çakışan
 kutuları birleştirir (NMS, IoU ≥ 0.5) ve en yüksek conf'lu sınıfı alır.
 
-## 5. Yeni tool yazma
+---
+
+## 7. Yeni tool yazma
 
 `s2agent/tools/` içine bir `.py` dosyası bırak, **otomatik yüklenir**. Başka bir yere kayıt eklemen gerekmiyor.
 
@@ -257,7 +381,7 @@ def get_track_kinematics(track_id: str, *, ctx: ToolContext) -> dict:
 4. Beklenen hatalarda exception fırlatma, `{"error": "..."}` döndür. (Beklenmeyen exception'lar da yakalanıp LLM'e hata olarak gider.)
 5. LLM'e görüntü göstermek için sonuca `"_image": data_url` ekle (`geo.image_data_url`).
 6. Matematik (mesafe, açı, dönüşüm) `s2agent/geo.py` içinde olsun, prompt'a hesap yaptırma.
-7. Yeni tool'u **fake LLM ile test et** (bkz. [Test](#7-test)), sonra tek görüntüde gerçek LLM ile dene.
+7. Yeni tool'u **fake LLM ile test et** (bkz. [Test](#9-test)), sonra tek görüntüde gerçek LLM ile dene.
 
 Bir tool'u LLM olmadan, tek başına denemek için:
 ```python
@@ -269,7 +393,7 @@ print(r.result)
 
 ---
 
-## 6. Yeni aşama ekleme
+## 8. Yeni aşama ekleme
 
 `s2agent/stages.py` içindeki `STAGES` listesine istediğin sıraya ekle:
 ```python
@@ -285,7 +409,7 @@ Stage(
 
 ---
 
-## 7. Test
+## 9. Test
 
 ```bash
 python -m pytest -q
@@ -303,7 +427,7 @@ fallback üzerinden sona ulaşılıyor; düzgün bir LLM gate'leri fallback'siz 
 
 ---
 
-## 8. Veri
+## 10. Veri
 
 `data/stage2/` (yarışmanın orijinal dosyaları, **değiştirme**):
 | Dosya | İçerik |
@@ -322,7 +446,7 @@ teyit edildi"; dikkat kararını etkiler ama tespitle çelişirse yok sayılır)
 
 ---
 
-## 9. Ayarlar (`.env`)
+## 11. Ayarlar (`.env`)
 
 | Değişken | Varsayılan | Açıklama |
 |---|---|---|
@@ -339,13 +463,16 @@ teyit edildi"; dikkat kararını etkiler ama tespitle çelişirse yok sayılır)
 | `PRED_FILE` | `data/stage2/pred_all_boxes_submission.csv` | `DETECTOR=csv` için tahmin dosyası |
 | `DETECTOR_URL` | – | `DETECTOR=http` için GPU sunucusunun adresi |
 | `IMAGE_MAX_SIDE` | `1280` | Modele gönderilen görüntünün uzun kenarı (px). Token sayısı görüntü boyutuyla artar |
+| `UI_HOST` / `UI_PORT` | `127.0.0.1` / `8000` | Arayüz sunucusunun adresi |
+| `FAST_STAGES` | `TRACKS,MOTION,REPORTS,ASSESS` | Arayüzde özet turu atlanan aşamalar (deneysel); boş = kapalı |
+| `DEBUG_MD` | `debug.md` | Arayüzdeki her canlı çalıştırmanın tam konuşma dökümü |
 
 Kişisel denemeler için `.env`'i commit'lemeden ortam değişkeniyle ez:
 `LLM_REASONING_EFFORT=high python -m scripts.run img_003839`
 
 ---
 
-## 10. GLM & bütçe notları
+## 12. GLM & bütçe notları
 
 - **Bütçe:** Takımın toplamı **15 USD**, sıfırlanmıyor ve key'i herkes ortak kullanıyor. Büyük bir iş başlatmadan önce
   `python -m scripts.check_budget` ile harcamaya bak. `--all` komutunu gereksiz yere tekrar tekrar çalıştırma.
@@ -358,7 +485,7 @@ Kişisel denemeler için `.env`'i commit'lemeden ortam değişkeniyle ez:
 
 ---
 
-## 11. Sorun giderme
+## 13. Sorun giderme
 
 | Belirti | Çözüm |
 |---|---|
@@ -373,25 +500,19 @@ Kişisel denemeler için `.env`'i commit'lemeden ortam değişkeniyle ez:
 | Trace'te sürekli `nudge` → `fallback` | LLM tool'u çağırmıyor. Tool docstring'ini ve `stages.py`'deki `goal` metnini netleştir |
 | `Recursion limit reached` | `RECURSION_LIMIT` değerini artır ya da `MAX_TURNS_PER_STAGE` değerini düşür |
 | Windows'ta `Activate.ps1` çalışmıyor | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| `address already in use` (port 8000) | Eski sunucu açık kalmış: [Durdurma](#durdurma) adımı ya da `UI_PORT=8001` |
+| Arayüzde değişiklik görünmüyor | **Cmd+Shift+R** / **Ctrl+F5** (tarayıcı eski JS'i tutuyor); Python değiştiyse sunucuyu yeniden başlat |
+| Harita siyah, bölgeler var | Harita altlığı internetten gelir; bağlantı yoksa düz arka plan kalır, işlev etkilenmez |
+| "köşe koordinatı yok" | Dosya adı `image_id` değil; sol paneldeki kutuya `image_id` yaz |
+| Arayüz uzun süre bekliyor | Sunucu yeniden başlatıldıysa sayfayı yenile; GLM adımları alttaki log'da akmalı, `debug.md`'ye bak |
 
 ---
 
-## 12. Ekip çalışma düzeni
-
-- `main` her zaman çalışır durumda kalsın. İş için branch aç: `git checkout -b tool/match-tracks`
-- **Bir tool = bir dosya ya da bir fonksiyon.** Aynı dosyada iki kişi çalışacaksanız önceden haber verin.
-- PR'dan önce: `python -m pytest -q` yeşil olmalı ve `python -m scripts.run img_003839` uçtan uca çalışmalı.
-- Gate'lerin kullandığı alan adlarını (`matches[].track_id`, `reports[].report_id`) değiştirecekseniz `stages.py`'yi de güncelleyin.
-- `outputs/` git'e girmez. Paylaşmak istediğiniz bir sonucu ayrıca gönderin.
-
----
-
-## 13. Proje yapısı
+## 14. Proje yapısı
 
 ```
 stage2-agent/
-├── .env                  # gateway + key (takım içi)
-├── .env.example
+├── .env.example          # → .env olarak kopyala, key'i doldur
 ├── requirements.txt
 ├── data/stage2/          # yarışma verisi (salt okunur)
 ├── docs/gorev_tanimi.txt # görev tanımının metin hali
@@ -413,6 +534,13 @@ stage2-agent/
 │       ├── motion.py     # get_track_kinematics, get_track_points
 │       ├── reports.py    # find_reports, compare_report
 │       └── assess.py     # submit_assessment + Alert şeması
+├── ui/                   # komuta merkezi (python -m ui.server)
+│   ├── server.py         # FastAPI: API + statik web
+│   ├── pipeline.py       # kutu → lat/lon → bölge (Merkez Üs + 8 sektör)
+│   ├── live_agent.py     # canlı GLM stream, tool → görsel payload, debug.md
+│   └── web/              # index.html, css/app.css, js/*.js (build yok)
+├── outputs/              # agent çıktıları <image_id>.json (git'e girmez)
+├── debug.md              # son canlı çalıştırmanın tam dökümü (git'e girmez)
 ├── scripts/
 │   ├── doctor.py         # kurulum kontrolü
 │   ├── run.py            # tek görüntü / --all
