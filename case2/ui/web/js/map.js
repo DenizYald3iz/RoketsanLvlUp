@@ -24,11 +24,17 @@ const line = (coords, properties = {}) => ({ type: 'Feature', properties, geomet
 
 export function createMap(container, layout) {
   const base = [layout.base.lon, layout.base.lat];
-  const map = new maplibregl.Map({ container, style: style(), center: base, zoom: CFG.overviewZoom,
+  const map = new maplibregl.Map({ container, style: style(), center: base, zoom: 11,
     attributionControl: false, pitch: 0 });
   const zoneEls = {};
   const links = [];
   const ready = new Promise((r) => map.on('load', r));
+  // whole 8-sector ring on screen, whatever the window size
+  const ringBounds = () => {
+    const pts = [0, 90, 180, 270].map((b) => dest(base, b, CFG.outerRadiusM));
+    return [[pts[3][0], pts[2][1]], [pts[1][0], pts[0][1]]];
+  };
+  map.once('load', () => map.fitBounds(ringBounds(), { padding: CFG.overviewPad, duration: 0 }));
 
   ready.then(() => {
     addSectors();
@@ -167,9 +173,17 @@ export function createMap(container, layout) {
       map.getSource('links').setData(fc(links));
     },
 
-    async overview() {
-      map.flyTo({ center: base, zoom: CFG.overviewZoom, duration: CFG.flyMs });
-      await sleep(CFG.flyMs);
+    async overview(ms = CFG.flyMs) {
+      map.flyTo({ center: base, zoom: 11, duration: ms });
+      await sleep(ms);
+    },
+
+    // Zoom into a frame (no image re-add) — used when GLM locks detections to tracks.
+    async zoomFrame(res, ms = CFG.flyMs) {
+      const lons = res.footprint.map((p) => p[0]), lats = res.footprint.map((p) => p[1]);
+      map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+        { padding: 80, maxZoom: CFG.frameMaxZoom, duration: ms });
+      await sleep(ms + 100);
     },
 
     setZoneCount(name, n) {
@@ -240,7 +254,7 @@ export function createMap(container, layout) {
       }
       const lons = pts.map((p) => p[0]), lats = pts.map((p) => p[1]);
       map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-        { padding: 140, maxZoom: 16, duration: 1000 });
+        { padding: 140, maxZoom: CFG.trackMaxZoom, duration: 1000 });
     },
 
     clearTracks() {

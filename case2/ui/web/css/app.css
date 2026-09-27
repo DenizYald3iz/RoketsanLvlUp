@@ -247,3 +247,14 @@ main.no-left aside.left, main.no-right aside.right { padding: 0; }
 .det.sel i { transform: scale(1.8); box-shadow: 0 0 18px var(--c), 0 0 4px #fff; }
 .det.sel b { display: block; }
 .logbox.big { max-width: none; } .logbox.big .log { max-height: 62vh; }
+
+/* ---------- alert confidence (combine_confidence) ---------- */
+.conf { font: 700 8px var(--disp); letter-spacing: .08em; padding: 2px 5px; border: 1px dashed; white-space: nowrap; }
+.cf-yuksek { color: var(--green); } .cf-orta { color: var(--amber); } .cf-dusuk { color: var(--red); }
+.cneck { font-size: 10px; color: var(--dim); margin: -2px 0 4px; }
+.cfactors { list-style: none; padding-left: 0 !important; }
+.cfactors li { display: grid; grid-template-columns: 54px auto 1fr; gap: 2px 8px; align-items: center; margin: 3px 0; }
+.cfactors li b { color: var(--txt); font-weight: 600; }
+.cfactors li small { grid-column: 2 / -1; font-size: 9.5px; }
+.cbar { height: 4px; background: rgba(255,255,255,.08); } .cbar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 4px var(--cyan); }
+td.lvl small { font-size: 9.5px; white-space: nowrap; color: var(--dim); }

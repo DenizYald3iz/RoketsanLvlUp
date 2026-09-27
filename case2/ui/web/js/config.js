@@ -2,10 +2,12 @@
 export const CFG = {
   outerRadiusM: 8000,          // sector ring outer edge (tracks reach ~8 km from base)
   ringStepM: 1000,             // range rings every N metres
-  overviewZoom: 11.8,
-  frameMaxZoom: 18.3,
+  overviewPad: 24,             // px around the whole zone ring in the overview (bigger = further out)
+  frameMaxZoom: 17.3,          // max zoom when focusing a drone frame
+  trackMaxZoom: 15,            // max zoom when a vehicle's track is selected
   dropDelayMs: 220,            // stagger between detection "drops"
   flyMs: 1600,
+  snapOutMs: 450,              // sudden zoom-out before GLM's track trails
   basemap: 'sat',              // 'sat' | 'dark'
   minConf: 0.3,
   trackTailMin: 30,

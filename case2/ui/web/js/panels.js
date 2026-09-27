@@ -45,9 +45,10 @@ export function renderDetections(res, onHover, onClick) {
   $('#det-title').textContent = `TESPİTLER · ${res.image_id} · ${res.capture_time}`;
 }
 
-export function markDetectionRow(key, level) {
+export function markDetectionRow(key, level, conf = null) {
   const td = document.querySelector(`#dets tr[data-key="${key}"] .lvl`);
-  if (td) td.innerHTML = `<span class="lv lv-${level}">${level.toUpperCase()}</span>`;
+  if (td) td.innerHTML = `<span class="lv lv-${level}">${level.toUpperCase()}</span>` +
+    (conf != null ? `<br><small title="alert güven skoru">güven %${Math.round(conf * 100)}</small>` : '');
 }
 
 // detail (optional, plain text): full content shown when the line is clicked.

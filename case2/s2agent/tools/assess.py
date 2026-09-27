@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..registry import ToolContext, stage_tool
+from .confidence import alert_confidence
 
 LEVELS = ("yuksek", "orta", "dusuk")
 ID_RE = re.compile(r"\b(D\d{2,}|T\d{4}|R\d{3})\b")
@@ -25,6 +26,8 @@ class Alert(BaseModel):
     reason: str = Field(description="Neden dikkat gerektiriyor")
     evidence: list[str] = Field(min_length=1, description="Dayanılan veriler, ör. 'T0187: 9 m/s, üsse 3.0 km, "
                                                           "ETA 5.5 dk', 'R012 uyumlu'")
+    confidence: float | None = Field(default=None, ge=0, le=1, description="combine_confidence sonucu (0..1); "
+                                     "boş bırakılırsa otomatik hesaplanır")
 
 
 def _known_ids(ctx: ToolContext) -> tuple[set[str], set[str]]:
@@ -61,7 +64,8 @@ def _problems(alerts: list[dict], ignored: set[str], vehicles: set[str], reports
 def submit_assessment(alerts: list[Alert], summary: str, ignored_reports: list[str] = [], *,
                       ctx: ToolContext) -> dict:
     """Nihai değerlendirmeyi kaydeder ve agent'ı bitirir. Dikkat gerektiren HER durum için bir alert; yoksa boş liste.
-    Alert bir araç/track hakkındadır (subject: 'D01/T0078'); raporlar evidence'a yazılır. level: yuksek = üsse
+    Alert bir araç/track hakkındadır (subject: 'D01/T0078'); raporlar evidence'a yazılır. Her alert'in güven skoru
+    (confidence) combine_confidence ile delillerden hesaplanıp yazılır. level: yuksek = üsse
     yaklaşan ve yakın/hızlı (kısa ETA) ya da acil; orta = izlenmeli; dusuk = bilgi amaçlı.
     ignored_reports: çelişkili/ilgisiz olduğu için yok sayılan report_id'ler (compare_report 'contradicts' ve
     'irrelevant' dedikleri otomatik eklenir). Id'ler delillerde olmalı; hatalıysa sorunlar listelenir, düzeltip tekrar çağır."""
@@ -85,8 +89,18 @@ def submit_assessment(alerts: list[Alert], summary: str, ignored_reports: list[s
         warnings.append(f"compare_report 'contradicts'/'irrelevant' dediği için yok sayılanlara eklendi: {added}")
     if kept := sorted(r for r in ignored if verdicts.get(r) == "consistent"):
         warnings.append(f"Tespitle uyumlu (consistent) raporlar yok sayıldı: {kept}")
+    stored = ctx.evidence.get("confidence", {})
     for a in alerts:
         a["ids"] = sorted(set(ID_RE.findall(a["subject"])))
+        # the number always comes from the evidence (combine_confidence), never from the LLM's own guess
+        conf = stored.get(a["subject"]) or alert_confidence(a["subject"], ctx.evidence)
+        given = a.get("confidence")
+        if given is not None and conf["confidence"] is not None and abs(given - conf["confidence"]) > 0.05:
+            warnings.append(f"{a['subject']}: güven {given} yerine delillerden hesaplanan {conf['confidence']} yazıldı")
+        a["confidence"] = conf["confidence"]
+        a["confidence_band"] = conf["band"]
+        a["confidence_detail"] = {"bottleneck": conf["bottleneck"], "weakest_link": conf["weakest_link"],
+                                  "factors": conf["factors"]}
     alerts.sort(key=lambda a: LEVELS.index(a["level"]))
     return {"image_id": ctx.image_id, "capture_time": ctx.data.meta[ctx.image_id]["capture_time"],
             "alerts": alerts, "summary": summary, "ignored_reports": sorted(ignored),

@@ -6,7 +6,7 @@ import { sleep } from './geo.js';
 import { createMap } from './map.js';
 import { createImageView } from './imageView.js';
 import * as ui from './panels.js';
-import { LEVELS, levelsByDet, loadAgent, maxLevel, renderAlerts } from './agent.js';
+import { LEVELS, confByDet, levelsByDet, loadAgent, maxLevel, renderAlerts } from './agent.js';
 import { createBrain } from './brain.js';
 import { createInspector } from './inspect.js';
 import { createIntel } from './intel.js';
@@ -44,7 +44,6 @@ dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('over'); };
 dz.ondragleave = () => dz.classList.remove('over');
 dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('over'); enqueueFiles(e.dataTransfer.files); };
 $('#sample').onchange = (e) => e.target.value && enqueueSample(e.target.value);
-$('#basemap').onchange = (e) => map.setBasemap(e.target.value);
 $('#demo').onclick = async () => {
   const withAgent = [];
   for (const i of images) if (!state.done.has(i.image_id) && (await loadAgent(i.image_id))) withAgent.push(i.image_id);
@@ -181,15 +180,20 @@ function onAgentEvent(ctx, ev) {
     ctx.inspecting = true;
   }
   if (u.matches) {
-    ctx.chain = ctx.chain.then(() => {
+    ctx.chain = ctx.chain.then(async () => {
+      await map.zoomFrame(ctx.res); // zoom in the moment detections lock onto tracks
       tagMatches(ctx.id, u.matches);
+      ctx.zoomedIn = true;
       ui.log(`⌖ KİLİT · ${u.matches.map((m) => `${m.det_id}↔${m.track_id}`).join('  ')} · izi görmek için araca tıkla`, 'ok');
     });
   }
   if (u.track) {
     trk.kin[u.track.track_id] = u.track.kin;
     trk.cache[u.track.track_id] = u.track;
-    ctx.chain = ctx.chain.then(() => map.flashTrack(u.track));
+    ctx.chain = ctx.chain.then(async () => {
+      if (ctx.zoomedIn) { ctx.zoomedIn = false; await sleep(900); await map.overview(CFG.snapOutMs); } // snap out, then draw
+      await map.flashTrack(u.track);
+    });
   }
   if (u.report) intel.add(u.report);
 }
@@ -222,12 +226,12 @@ async function selectVehicle(key) {
 function applyAgent(res, agent) {
   Object.assign(trk.kin, agent?.kinematics || {});
   tagMatches(res.image_id, agent?.matches?.matches);
-  const levels = levelsByDet(agent);
+  const levels = levelsByDet(agent), confs = confByDet(agent);
   for (const d of res.detections) {
     const lv = levels[d.det_id];
     if (!lv) continue;
     map.setDetLevel(d.key, lv);
-    ui.markDetectionRow(d.key, lv);
+    ui.markDetectionRow(d.key, lv, confs[d.det_id]);
   }
   renderAlerts($('#alerts'), agent, res.image_id);
   if (!agent) return;

@@ -72,7 +72,9 @@ STAGES: list[Stage] = [
     ),
     Stage(
         "ASSESS",
-        "Toplanan delillere göre hangi durumların dikkat gerektirdiğine karar ver ve submit_assessment çağır. "
+        "Toplanan delillere göre hangi durumların dikkat gerektirdiğine karar ver. Her alert adayı için "
+        "combine_confidence(subject) çağır (güven skoru delillerden hesaplanır; darboğaza gerekçede değin), "
+        "sonra submit_assessment çağır. "
         "Alert'ler araç/track hakkındadır; her alert için gerekçe ve dayandığı veriyi (det_id, track_id, hız, mesafe, "
         "ETA, report_id + verdict) yaz. 'contradicts' raporlar yok sayılır, alert konusu olmaz. "
         "Seviye kuralları: yuksek = üsse yaklaşıyor ve ETA <= 10 dk; orta = üsse yaklaşıyor ve ETA <= 30 dk, "
