@@ -1,0 +1,46 @@
+{
+  "track_id": "T0205",
+  "zone": {
+    "key": "base",
+    "name": "Merkez Us",
+    "lat": 39.92184,
+    "lon": 32.85306
+  },
+  "sample_count": 25,
+  "first_seen_time": "09:10",
+  "last_seen_time": "11:10",
+  "closest": {
+    "time": "11:05",
+    "lat": 39.914143,
+    "lon": 32.826346,
+    "distance_m": 2433.694
+  },
+  "farthest": {
+    "time": "09:50",
+    "lat": 39.852282,
+    "lon": 32.865757,
+    "distance_m": 7809.995
+  },
+  "seconds_from_first_seen_to_closest": 6900,
+  "approaching_interval_count": 14,
+  "fastest_approach": {
+    "start_time": "10:35",
+    "end_time": "10:40",
+    "duration_seconds": 300,
+    "start_distance_m": 5823.787,
+    "end_distance_m": 3719.465,
+    "distance_reduction_m": 2104.322,
+    "speed_m_s": 7.014408,
+    "speed_km_h": 25.251867
+  },
+  "image_count": 0,
+  "images": [],
+  "method": {
+    "distance": "Haversine distance in meters to the zone point at recorded samples",
+    "approach_speed": "Decrease in distance to zone / elapsed seconds between consecutive samples; interval average, not instantaneous travel speed",
+    "time_assumption": "All records are from one calendar day",
+    "image_matching": "Exact capture time and geographic containment, from matched_tracks.json; not visual confirmation",
+    "ties": "Earliest sample or interval wins",
+    "null_fastest_approach": "No observed interval with decreasing distance, or fewer than two samples"
+  }
+}
