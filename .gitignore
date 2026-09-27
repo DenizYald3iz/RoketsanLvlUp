@@ -8,3 +8,4 @@ outputs/
 .idea/
 .vscode/
 debug.md
+.env
