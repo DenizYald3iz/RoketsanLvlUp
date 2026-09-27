@@ -1,6 +1,6 @@
 // Tactical map: base + center ring + 8 sectors, radar sweep, drone frames, detection drops.
 import { CFG, labelColor, labelTr, prettyZone } from './config.js';
-import { circle, dest, metersPerPixel, sleep, wedge } from './geo.js';
+import { circle, dest, haversine, metersPerPixel, sleep, wedge } from './geo.js';
 
 const BASEMAPS = {
   sat: { tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
@@ -49,6 +49,13 @@ export function createMap(container, layout) {
       paint: { 'line-color': '#ffb020', 'line-width': 9, 'line-blur': 7, 'line-opacity': 0.35 } });
     map.addLayer({ id: 'sel', type: 'line', source: 'sel', layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-width': 3, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, 'rgba(0,0,0,0)', 1, '#ffb020'] } });
+    // 5-min samples of the selected track; hollow ring = vehicle stopped there
+    map.addSource('sel-pts', { type: 'geojson', data: fc([]) });
+    map.addLayer({ id: 'sel-pts', type: 'circle', source: 'sel-pts', paint: {
+      'circle-radius': ['case', ['get', 'stop'], 6, 3],
+      'circle-color': ['case', ['get', 'stop'], 'rgba(0,0,0,0)', ['get', 'color']],
+      'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': ['case', ['get', 'stop'], 2, 0],
+      'circle-opacity': ['get', 'a'], 'circle-stroke-opacity': ['get', 'a'] } });
     map.addSource('links', { type: 'geojson', data: fc([]) });
     map.addLayer({ id: 'links', type: 'line', source: 'links',
       paint: { 'line-color': '#ffb020', 'line-width': 1.2, 'line-dasharray': [2, 3], 'line-opacity': 0.7 } });
@@ -80,7 +87,7 @@ export function createMap(container, layout) {
     map.addLayer({ id: 'rings', type: 'line', source: 'rings',
       paint: { 'line-color': '#22e6ff', 'line-opacity': 0.18, 'line-width': 1, 'line-dasharray': [1, 4] } });
 
-    for (const z of layout.zones) zoneEls[z.name] = zoneLabel(z.name, dest(base, z.bearing, CFG.outerRadiusM * 0.78));
+    for (const z of layout.zones) zoneEls[z.name] = zoneLabel(z.name, dest(base, z.bearing, CFG.outerRadiusM * 0.62));
     zoneEls[layout.base.name] = zoneLabel(layout.base.name, base, true);
   }
 
@@ -203,12 +210,16 @@ export function createMap(container, layout) {
     // Selected vehicle only: full history fading old → new, heading arrow, speed/ETA tag. null clears.
     showTrack(t) {
       trackMarkers.splice(0).forEach((m) => m.remove());
+      map.getSource('sel-pts').setData(fc([]));
       if (!t?.points?.length) return map.getSource('sel').setData(fc([]));
       const color = trackColor(t.kin), pts = t.points;
       map.setPaintProperty('sel', 'line-gradient',
         ['interpolate', ['linear'], ['line-progress'], 0, 'rgba(0,0,0,0)', 0.5, color + '66', 1, color]);
       map.setPaintProperty('sel-glow', 'line-color', color);
       map.getSource('sel').setData(fc([line(pts)]));
+      map.getSource('sel-pts').setData(fc(pts.map((p, i) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: p },
+        properties: { color, a: 0.35 + (0.65 * i) / (pts.length - 1 || 1),
+          stop: i > 0 && haversine(pts[i - 1], p) < CFG.stopStepM, time: t.times?.[i] } }))));
 
       const head = pts.at(-1), prev = pts.findLast((p) => p[0] !== head[0] || p[1] !== head[1]);
       const k = t.kin || {};

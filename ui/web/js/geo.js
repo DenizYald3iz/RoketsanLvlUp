@@ -28,3 +28,8 @@ export function wedge(center, b0, b1, r0, r1, steps = 32) {
 
 export const metersPerPixel = (lat, zoom) => (78271.517 * Math.cos(rad(lat))) / 2 ** zoom;
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export function haversine([lon1, lat1], [lon2, lat2]) {
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}

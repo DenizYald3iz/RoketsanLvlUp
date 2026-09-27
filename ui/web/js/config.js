@@ -1,14 +1,15 @@
 // All tunables in one place. Change look & timing here, not in the modules.
 export const CFG = {
-  outerRadiusM: 6000,          // sector ring outer edge
+  outerRadiusM: 8000,          // sector ring outer edge (tracks reach ~8 km from base)
   ringStepM: 1000,             // range rings every N metres
-  overviewZoom: 12.4,
+  overviewZoom: 11.8,
   frameMaxZoom: 18.3,
   dropDelayMs: 220,            // stagger between detection "drops"
   flyMs: 1600,
   basemap: 'sat',              // 'sat' | 'dark'
   minConf: 0.3,
-  trackTailMin: 30,            // minutes of track history drawn on the map
+  trackTailMin: 30,
+  stopStepM: 30,               // track step shorter than this = vehicle stopped (5-min samples)            // minutes of track history drawn on the map
 };
 
 export const LABELS = {

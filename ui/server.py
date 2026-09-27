@@ -18,6 +18,14 @@ UPLOADS = ROOT / "outputs" / "uploads"
 app = FastAPI(title="Stage2 Command Center")
 
 
+@app.middleware("http")
+async def no_cache(request, call_next):
+    """Browser always gets the current HTML/JS/CSS — no stale UI after edits."""
+    resp = await call_next(request)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.get("/api/layout")
 def get_layout():
     return pipeline.layout()
